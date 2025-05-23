@@ -50,9 +50,7 @@ def test_conversion_mp4():
         "file": ("test_video.mp4", open(TEST_VIDEO_PATH, "rb"), "video/mp4")
     }
     data = {
-        "formats": "mp4",
-        "preserve_audio": "true",
-        "optimize_level": "balanced"
+        "formats": "mp4"
     }
     
     # Start conversion
@@ -106,9 +104,7 @@ def test_conversion_webm():
         "file": ("test_video.mp4", open(TEST_VIDEO_PATH, "rb"), "video/mp4")
     }
     data = {
-        "formats": "webm",
-        "preserve_audio": "true",
-        "optimize_level": "fast"
+        "formats": "webm"
     }
     
     # Start conversion
@@ -162,9 +158,7 @@ def test_conversion_multiple_formats():
         "file": ("test_video.mp4", open(TEST_VIDEO_PATH, "rb"), "video/mp4")
     }
     data = {
-        "formats": "mp4,webm",
-        "preserve_audio": "true",
-        "optimize_level": "max"
+        "formats": "mp4,webm"
     }
     
     # Start conversion
@@ -176,7 +170,7 @@ def test_conversion_multiple_formats():
     print(f"✅ Multiple format conversion started with request ID: {request_id}")
     
     # Check conversion status (with timeout)
-    max_retries = 90  # Longer timeout for multiple formats (90 seconds)
+    max_retries = 90  # Longer timeout (90 seconds) for multiple formats
     for i in range(max_retries):
         status_response = requests.get(f"{BASE_URL}/convert/{request_id}")
         assert status_response.status_code == 200
@@ -222,9 +216,7 @@ def test_invalid_file_type():
         "file": ("invalid.txt", open(invalid_file_path, "rb"), "text/plain")
     }
     data = {
-        "formats": "mp4",
-        "preserve_audio": "true",
-        "optimize_level": "balanced"
+        "formats": "mp4"
     }
     
     # Attempt conversion
@@ -235,79 +227,76 @@ def test_invalid_file_type():
     # Clean up
     invalid_file_path.unlink()
 
-# Run individual test
-def run_single_test(test_name):
-    print(f"\n🔍 Running {test_name} test\n")
-    
-    try:
-        if test_name == "health":
-            test_health_endpoint()
-        elif test_name == "metrics":
-            test_metrics_endpoint()
-        elif test_name == "mp4":
-            test_conversion_mp4()
-        elif test_name == "webm":
-            test_conversion_webm()
-        elif test_name == "multiple":
-            test_conversion_multiple_formats()
-        elif test_name == "invalid":
-            test_invalid_file_type()
-        else:
-            print(f"Unknown test: {test_name}")
-            return
-            
-        print(f"\n\u2705 {test_name} test passed successfully!")
-    except Exception as e:
-        print(f"\n\u274c {test_name} test failed: {str(e)}")
-        raise
-
 # Run all tests
 def run_all_tests():
     print("\n🔍 Starting endpoint tests for Video Extractor API\n")
     
-    tests = [
-        ("health", test_health_endpoint),
-        ("metrics", test_metrics_endpoint),
-        ("mp4", test_conversion_mp4),
-        ("webm", test_conversion_webm),
-        ("multiple", test_conversion_multiple_formats),
-        ("invalid", test_invalid_file_type)
-    ]
+    tests = {
+        "health": test_health_endpoint,
+        "metrics": test_metrics_endpoint,
+        "mp4": test_conversion_mp4,
+        "webm": test_conversion_webm,
+        "multiple": test_conversion_multiple_formats,
+        "invalid": test_invalid_file_type,
+    }
     
-    results = []
-    for name, test_func in tests:
+    results = {}
+    
+    for name, test_func in tests.items():
         print(f"\n🔍 Running {name} test\n")
         try:
             test_func()
-            print(f"\u2705 {name} test passed")
-            results.append((name, "PASS"))
+            print(f"✅ {name} test passed")
+            results[name] = "PASS"
         except Exception as e:
-            print(f"\u274c {name} test failed: {str(e)}")
-            results.append((name, f"FAIL: {str(e)}"))
+            print(f"❌ {name} test failed: {str(e)}")
+            results[name] = "FAIL"
     
-    # Print summary
     print("\n📊 Test Summary:\n")
-    for name, result in results:
-        status = "\u2705 PASS" if result == "PASS" else f"\u274c {result}"
+    all_passed = True
+    for name, result in results.items():
+        status = "✅ PASS" if result == "PASS" else "❌ FAIL"
         print(f"{name}: {status}")
+        if result == "FAIL":
+            all_passed = False
     
-    # Check if all tests passed
-    all_passed = all(result == "PASS" for _, result in results)
     if all_passed:
-        print("\n\u2705 All tests passed successfully!")
+        print("\n✅ All tests passed successfully!")
     else:
-        print("\n\u274c Some tests failed. See summary above.")
-        # Raise exception to indicate test failure
-        failed_tests = [name for name, result in results if result != "PASS"]
-        raise Exception(f"Failed tests: {', '.join(failed_tests)}")
+        print("\n❌ Some tests failed!")
+        sys.exit(1)
+
+def run_single_test(test_name):
+    print(f"\n🔍 Running {test_name} test\n")
+    
+    tests = {
+        "health": test_health_endpoint,
+        "metrics": test_metrics_endpoint,
+        "mp4": test_conversion_mp4,
+        "webm": test_conversion_webm,
+        "multiple": test_conversion_multiple_formats,
+        "invalid": test_invalid_file_type,
+    }
+    
+    if test_name not in tests:
+        print(f"❌ Unknown test: {test_name}")
+        print(f"Available tests: {', '.join(tests.keys())}")
+        sys.exit(1)
+    
+    try:
+        tests[test_name]()
+        print(f"\n✅ {test_name} test passed successfully!")
+    except Exception as e:
+        print(f"\n❌ {test_name} test failed: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     import sys
     
-    # Check if a specific test was requested
     if len(sys.argv) > 1:
-        test_name = sys.argv[1].lower()
+        # Run a specific test
+        test_name = sys.argv[1]
         run_single_test(test_name)
     else:
-        # Run all tests if no specific test was requested
+        # Run all tests
         run_all_tests()

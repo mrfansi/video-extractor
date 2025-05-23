@@ -38,7 +38,7 @@ if not request_id:
     # Start a conversion
     with open(TEST_VIDEO_PATH, "rb") as f:
         files = {"file": ("test_video.mp4", f, "video/mp4")}
-        data = {"formats": "mp4", "optimize_level": "balanced"}
+        data = {"formats": "mp4"}
         response = requests.post(f"{BASE_URL}/convert", files=files, data=data)
     
     if response.status_code != 202:

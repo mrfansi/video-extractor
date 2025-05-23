@@ -59,8 +59,6 @@ async def start_conversion(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     formats: Optional[str] = Form("mp4"),
-    preserve_audio: Optional[bool] = Form(True),
-    optimize_level: OptimizationLevel = Form(OptimizationLevel.BALANCED),
 ):
     """
     Upload a video file and start an asynchronous conversion process.
@@ -69,8 +67,6 @@ async def start_conversion(
         background_tasks: FastAPI BackgroundTasks
         file: Video file to convert
         formats: Comma-separated list of output formats (default: mp4)
-        preserve_audio: Whether to preserve audio in the output (default: True)
-        optimize_level: Level of optimization to apply (default: balanced)
         
     Returns:
         ConversionRequestResponse: Request accepted response with a unique request ID
@@ -101,13 +97,13 @@ async def start_conversion(
         # Parse formats
         format_list = [fmt.strip().lower() for fmt in formats.split(",")]
         
-        # Create a new conversion job
+        # Create a new conversion job with default values for preserve_audio and optimize_level
         job = ConversionJob(
             original_filename=original_filename,
             temp_file_path=temp_file_path,
             formats=format_list,
-            preserve_audio=preserve_audio,
-            optimize_level=optimize_level,
+            preserve_audio=True,  # Default to preserving audio
+            optimize_level=OptimizationLevel.BALANCED,  # Default to balanced optimization
         )
         
         # Store the job
@@ -119,7 +115,7 @@ async def start_conversion(
         # Log successful request
         logger.info(
             f"Conversion request accepted: job_id={job.id}, "
-            f"formats={format_list}, optimize_level={optimize_level.value}"
+            f"formats={format_list}"
         )
         
         # Return response with job ID
