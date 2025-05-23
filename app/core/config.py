@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from pydantic import AnyHttpUrl, validator
+from pydantic import AnyHttpUrl, field_validator, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE_MB: int
     ENABLE_METRICS: bool
     
-    @validator("TEMP_DIR")
+    @field_validator("TEMP_DIR")
     def create_temp_dir(cls, v):
         """Validate and create temp directory if it doesn't exist."""
         temp_dir = Path(v)
@@ -40,9 +40,10 @@ class Settings(BaseSettings):
     SUPPORTED_FORMATS: List[str] = ["mp4", "webm", "mov"]
     OPTIMIZATION_LEVELS: List[str] = ["fast", "balanced", "max"]
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True
+    )
 
 
 settings = Settings()

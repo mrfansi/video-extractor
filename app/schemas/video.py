@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class OptimizationLevel(str, Enum):
@@ -27,7 +27,7 @@ class VideoConversionRequest(BaseModel):
         description="Level of optimization to apply"
     )
 
-    @validator("formats")
+    @field_validator("formats")
     def validate_formats(cls, v):
         """Validate that formats are supported."""
         if not v:

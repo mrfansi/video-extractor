@@ -1,4 +1,8 @@
 import os
+import shutil
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI
 from loguru import logger
 
@@ -7,7 +11,45 @@ from app.core.config import settings
 from app.core.errors import setup_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import setup_middlewares
+from app.core.patches import apply_patches
 from app.api.metrics import setup_instrumentator
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup
+    logger.info("Application starting up")
+    
+    # Apply patches to fix deprecation warnings
+    apply_patches()
+    
+    # Ensure temp directory exists
+    os.makedirs(settings.TEMP_DIR, exist_ok=True)
+    
+    # Log configuration
+    logger.info(f"Max upload size: {settings.MAX_UPLOAD_SIZE_MB} MB")
+    logger.info(f"Max workers: {settings.MAX_WORKERS}")
+    logger.info(f"Supported formats: {', '.join(settings.SUPPORTED_FORMATS)}")
+    logger.info(f"Metrics enabled: {settings.ENABLE_METRICS}")
+    
+    yield  # This is where the application runs
+    
+    # Shutdown
+    logger.info("Application shutting down")
+    
+    # Perform cleanup if needed
+    try:
+        # Clean up temp directory
+        temp_path = Path(settings.TEMP_DIR)
+        if temp_path.exists():
+            for file_path in temp_path.glob('*'):
+                if file_path.is_file():
+                    file_path.unlink()
+            
+            logger.info(f"Temp directory cleaned up: {settings.TEMP_DIR}")
+    except Exception as e:
+        logger.error(f"Error during shutdown cleanup: {str(e)}")
 
 
 def create_application() -> FastAPI:
@@ -28,6 +70,7 @@ def create_application() -> FastAPI:
         docs_url=f"{settings.API_PREFIX}/docs",
         redoc_url=f"{settings.API_PREFIX}/redoc",
         openapi_url=f"{settings.API_PREFIX}/openapi.json",
+        lifespan=lifespan,
     )
     
     # Set up middlewares
@@ -66,41 +109,3 @@ def create_application() -> FastAPI:
 
 
 app = create_application()
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Perform actions on application startup."""
-    logger.info("Application starting up")
-    
-    # Ensure temp directory exists
-    os.makedirs(settings.TEMP_DIR, exist_ok=True)
-    
-    # Log configuration
-    logger.info(f"Max upload size: {settings.MAX_UPLOAD_SIZE_MB} MB")
-    logger.info(f"Max workers: {settings.MAX_WORKERS}")
-    logger.info(f"Supported formats: {', '.join(settings.SUPPORTED_FORMATS)}")
-    logger.info(f"Metrics enabled: {settings.ENABLE_METRICS}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Perform actions on application shutdown."""
-    logger.info("Application shutting down")
-    
-    # Perform cleanup if needed
-    # For example, clean up temp files
-    try:
-        import shutil
-        from pathlib import Path
-        
-        # Clean up temp directory
-        temp_path = Path(settings.TEMP_DIR)
-        if temp_path.exists():
-            for file_path in temp_path.glob('*'):
-                if file_path.is_file():
-                    file_path.unlink()
-            
-            logger.info(f"Temp directory cleaned up: {settings.TEMP_DIR}")
-    except Exception as e:
-        logger.error(f"Error during shutdown cleanup: {str(e)}")
