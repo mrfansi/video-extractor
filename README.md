@@ -40,6 +40,8 @@ A Python-based API that accepts video files and converts them into multiple opti
 
 ## Usage
 
+### Running Locally
+
 1. Start the API server:
    ```bash
    python main.py
@@ -48,6 +50,28 @@ A Python-based API that accepts video files and converts them into multiple opti
    Or directly with uvicorn:
    ```bash
    poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+
+### Running with Docker
+
+1. Build the Docker image:
+   ```bash
+   docker build -t video-extractor .
+   ```
+
+2. Run the container:
+   ```bash
+   docker run -p 8000:8000 --env-file .env -v /tmp/video-extractor:/tmp/video-extractor video-extractor
+   ```
+
+3. To run the container in the background:
+   ```bash
+   docker run -d -p 8000:8000 --env-file .env -v /tmp/video-extractor:/tmp/video-extractor --name video-extractor-api video-extractor
+   ```
+
+4. To stop the background container:
+   ```bash
+   docker stop video-extractor-api
    ```
 
 2. Access the API documentation at http://localhost:8000/docs
