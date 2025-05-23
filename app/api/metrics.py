@@ -9,7 +9,7 @@ from app.services.metrics_collector import metrics_collector
 router = APIRouter()
 
 # Initialize Prometheus instrumentator
-instrumentator = Instrumentator().instrument()
+instrumentator = Instrumentator()
 
 
 def setup_instrumentator(app):

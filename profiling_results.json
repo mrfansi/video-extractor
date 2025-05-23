@@ -1,0 +1,86 @@
+{
+  "optimization_levels": [
+    {
+      "optimization": "fast",
+      "format": "mp4",
+      "preset": "veryfast",
+      "crf": "28",
+      "conversion_time": 0.18773317337036133,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.007655143737792969,
+      "compression_ratio": 97.80675033507981
+    },
+    {
+      "optimization": "balanced",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 0.23461127281188965,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.007826805114746094,
+      "compression_ratio": 100.0
+    },
+    {
+      "optimization": "max",
+      "format": "mp4",
+      "preset": "slow",
+      "crf": "18",
+      "conversion_time": 0.23113608360290527,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.007857322692871094,
+      "compression_ratio": 100.38991105154136
+    }
+  ],
+  "formats": [
+    {
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 0.30344104766845703,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.007826805114746094,
+      "compression_ratio": 100.0
+    },
+    {
+      "format": "webm",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 1.1977698802947998,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.006478309631347656,
+      "compression_ratio": 82.77080541001584
+    }
+  ],
+  "resolutions": [
+    {
+      "resolution": "640x480",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 0.1867520809173584,
+      "original_size_mb": 0.005710601806640625,
+      "converted_size_mb": 0.005710601806640625,
+      "compression_ratio": 100.0
+    },
+    {
+      "resolution": "1280x720",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 0.2101118564605713,
+      "original_size_mb": 0.007826805114746094,
+      "converted_size_mb": 0.007826805114746094,
+      "compression_ratio": 100.0
+    },
+    {
+      "resolution": "1920x1080",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23",
+      "conversion_time": 0.4481620788574219,
+      "original_size_mb": 0.011691093444824219,
+      "converted_size_mb": 0.011691093444824219,
+      "compression_ratio": 100.0
+    }
+  ]
+}

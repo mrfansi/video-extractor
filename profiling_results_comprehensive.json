@@ -1,0 +1,149 @@
+{
+  "optimization_levels": [
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_veryfast_28.mp4",
+      "conversion_time": 0.42761683464050293,
+      "cpu_user_time": 0.00084592,
+      "cpu_system_time": 0.0009857919999999992,
+      "memory_used": 0.34375,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.09331607818603516,
+      "compression_ratio": 11.087617435329125,
+      "stats_file": "/tmp/video-extractor/results/sample_video_veryfast_28.mp4.stats.txt",
+      "optimization": "fast",
+      "format": "mp4",
+      "preset": "veryfast",
+      "crf": "28"
+    },
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4",
+      "conversion_time": 0.677238941192627,
+      "cpu_user_time": 0.0007759599999999992,
+      "cpu_system_time": 0.0009222899999999992,
+      "memory_used": 0.140625,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.14374542236328125,
+      "compression_ratio": 17.079524581674708,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4.stats.txt",
+      "optimization": "balanced",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23"
+    },
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_slow_18.mp4",
+      "conversion_time": 0.8053529262542725,
+      "cpu_user_time": 0.0008431679999999983,
+      "cpu_system_time": 0.0010115420000000007,
+      "memory_used": 0.125,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.20061016082763672,
+      "compression_ratio": 23.836071555239787,
+      "stats_file": "/tmp/video-extractor/results/sample_video_slow_18.mp4.stats.txt",
+      "optimization": "max",
+      "format": "mp4",
+      "preset": "slow",
+      "crf": "18"
+    }
+  ],
+  "formats": [
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4",
+      "conversion_time": 0.786808967590332,
+      "cpu_user_time": 0.0008075839999999931,
+      "cpu_system_time": 0.0011904559999999995,
+      "memory_used": -0.4375,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.14374542236328125,
+      "compression_ratio": 17.079524581674708,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4.stats.txt",
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23"
+    },
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.webm",
+      "conversion_time": 3.868333101272583,
+      "cpu_user_time": 0.001035040000000001,
+      "cpu_system_time": 0.0010677519999999982,
+      "memory_used": -2.15625,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.12967586517333984,
+      "compression_ratio": 15.407809796409547,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.webm.stats.txt",
+      "format": "webm",
+      "preset": "medium",
+      "crf": "23"
+    }
+  ],
+  "thread_counts": [
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4",
+      "conversion_time": 2.085296869277954,
+      "cpu_user_time": 0.0008794600000000055,
+      "cpu_system_time": 0.0010374180000000018,
+      "memory_used": -0.8125,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.14258480072021484,
+      "compression_ratio": 16.94162199280006,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4.stats.txt",
+      "threads": 1,
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23"
+    },
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4",
+      "conversion_time": 0.8709509372711182,
+      "cpu_user_time": 0.0007711680000000026,
+      "cpu_system_time": 0.0010460420000000005,
+      "memory_used": 0.234375,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.14258480072021484,
+      "compression_ratio": 16.94162199280006,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4.stats.txt",
+      "threads": 4,
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23"
+    },
+    {
+      "output_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4",
+      "conversion_time": 0.845473051071167,
+      "cpu_user_time": 0.0008402920000000064,
+      "cpu_system_time": 0.0009585840000000019,
+      "memory_used": 0.09375,
+      "original_size_mb": 0.8416242599487305,
+      "converted_size_mb": 0.14258480072021484,
+      "compression_ratio": 16.94162199280006,
+      "stats_file": "/tmp/video-extractor/results/sample_video_medium_23.mp4.stats.txt",
+      "threads": 8,
+      "format": "mp4",
+      "preset": "medium",
+      "crf": "23"
+    }
+  ],
+  "concurrent_conversions": {
+    "total_time": 0.4303920269012451,
+    "cpu_user_time": 0.002207247999999995,
+    "cpu_system_time": 0.001905918000000003,
+    "memory_used": 0.640625,
+    "max_workers": 8,
+    "task_results": [
+      {
+        "output_file": "/tmp/video-extractor/results/sample_video_veryfast_28.mp4",
+        "conversion_time": 0.4286830425262451,
+        "cpu_user_time": 0.0010761640000000045,
+        "cpu_system_time": 0.0013323320000000055,
+        "memory_used": 0.1875,
+        "original_size_mb": 0.8416242599487305,
+        "converted_size_mb": 0.09331607818603516,
+        "compression_ratio": 11.087617435329125,
+        "stats_file": "/tmp/video-extractor/results/sample_video_veryfast_28.mp4.stats.txt",
+        "format": "mp4",
+        "preset": "veryfast",
+        "crf": "28"
+      }
+    ]
+  }
+}

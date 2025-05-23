@@ -3,7 +3,12 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from pydantic import BaseSettings
+# In Pydantic v2, BaseSettings has moved to pydantic-settings package
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    # Fallback for Pydantic v1
+    from pydantic import BaseSettings
 
 
 class LogConfig(BaseSettings):

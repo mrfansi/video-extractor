@@ -15,23 +15,33 @@ class R2Uploader:
     
     def __init__(self):
         """Initialize the R2 client."""
-        self.s3_client = boto3.client(
-            's3',
-            endpoint_url=settings.R2_ENDPOINT_URL,
-            aws_access_key_id=settings.R2_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
-        )
         self.bucket_name = settings.R2_BUCKET_NAME
         self.public_url = settings.R2_PUBLIC_URL
+        self.is_available = False
         
-        # Ensure bucket exists
-        self._ensure_bucket_exists()
+        try:
+            # Initialize S3 client
+            self.s3_client = boto3.client(
+                's3',
+                endpoint_url=settings.R2_ENDPOINT_URL,
+                aws_access_key_id=settings.R2_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+            )
+            
+            # Try to ensure bucket exists, but don't fail if it doesn't
+            self._ensure_bucket_exists()
+            self.is_available = True
+        except Exception as e:
+            logger.warning(f"R2 storage initialization failed: {str(e)}. "
+                          f"File storage will be unavailable.")
+            self.s3_client = None
     
     def _ensure_bucket_exists(self) -> None:
         """Ensure the bucket exists, create if it doesn't."""
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
             logger.info(f"Bucket {self.bucket_name} exists")
+            return True
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
             if error_code == '404':
@@ -39,12 +49,13 @@ class R2Uploader:
                 try:
                     self.s3_client.create_bucket(Bucket=self.bucket_name)
                     logger.info(f"Bucket {self.bucket_name} created successfully")
+                    return True
                 except Exception as create_error:
-                    logger.error(f"Failed to create bucket: {str(create_error)}")
-                    raise StorageError(f"Failed to create bucket: {str(create_error)}")
+                    logger.warning(f"Failed to create bucket: {str(create_error)}")
+                    return False
             else:
-                logger.error(f"Error checking bucket: {str(e)}")
-                raise StorageError(f"Error checking bucket: {str(e)}")
+                logger.warning(f"Error checking bucket: {str(e)}")
+                return False
     
     def _get_content_type(self, file_extension: str) -> str:
         """Get the content type based on file extension."""
@@ -70,6 +81,12 @@ class R2Uploader:
         Returns:
             Tuple containing public URL and file size in MB
         """
+        # Check if R2 is available
+        if not self.is_available or self.s3_client is None:
+            error_msg = "R2 storage is not available"
+            logger.error(error_msg)
+            raise StorageError(error_msg)
+            
         file_path = Path(file_path)
         
         if not file_path.exists():
@@ -123,6 +140,11 @@ class R2Uploader:
         Returns:
             True if deletion was successful, False otherwise
         """
+        # Check if R2 is available
+        if not self.is_available or self.s3_client is None:
+            logger.warning(f"Cannot delete file {object_key}: R2 storage is not available")
+            return False
+            
         try:
             logger.info(f"Deleting file {object_key} from R2")
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=object_key)

@@ -18,7 +18,7 @@ from app.schemas.video import (
     FileMetadata,
     OptimizationLevel,
 )
-from app.services.converter import video_converter
+from app.services.converter import converter
 from app.services.metrics_collector import metrics_collector
 
 router = APIRouter()
@@ -73,7 +73,7 @@ async def start_conversion(
     
     try:
         # Save the uploaded file to a temporary location
-        temp_file_path, original_filename = await video_converter.save_upload_file(file)
+        temp_file_path, original_filename = await converter.save_upload_file(file)
         
         # Parse formats
         format_list = [fmt.strip().lower() for fmt in formats.split(",")]
@@ -91,7 +91,7 @@ async def start_conversion(
         create_job(job)
         
         # Schedule the job for processing in the background
-        background_tasks.add_task(video_converter.process_job, job)
+        background_tasks.add_task(converter.process_job, job)
         
         # Log successful request
         logger.info(
