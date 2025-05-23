@@ -67,9 +67,9 @@ def create_application() -> FastAPI:
         title="Video Extractor API",
         description="A FastAPI application for video conversion and optimization",
         version="1.0.0",
-        docs_url=f"{settings.API_PREFIX}/docs",
-        redoc_url=f"{settings.API_PREFIX}/redoc",
-        openapi_url=f"{settings.API_PREFIX}/openapi.json",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
         lifespan=lifespan,
     )
     
