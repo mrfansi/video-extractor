@@ -122,7 +122,7 @@ async def start_conversion(
         return ConversionRequestResponse(
             status="processing",
             request_id=job.id,
-            message="Conversion started. Monitor at /api/convert/{request_id}",
+            message=f"Conversion started. Monitor at /api/convert/{job.id}",
         )
         
     except Exception as e:
