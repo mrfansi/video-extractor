@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union
 
 from loguru import logger
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.jsonlogger import JsonFormatter
 from app.core.config import settings
 
 # Create logs directory if it doesn't exist
@@ -34,7 +34,7 @@ log_level = os.getenv("LOG_LEVEL", "info").lower()
 LOG_LEVEL = LOG_LEVEL_MAP.get(log_level, logging.INFO)
 
 # Custom JSON formatter for structured logging
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class CustomJsonFormatter(JsonFormatter):
     def add_fields(self, log_record, record, message_dict):
         super(CustomJsonFormatter, self).add_fields(log_record, record, message_dict)
         
@@ -156,29 +156,61 @@ configure_standard_logging()
 
 # Request logging middleware
 class RequestLoggingMiddleware:
-    async def __call__(self, request, call_next):
-        # Start timer
+    def __init__(self, app):
+        self.app = app
+    
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            # If not an HTTP request, just pass through
+            await self.app(scope, receive, send)
+            return
+        
+        # Record start time
         start_time = time.time()
         
         # Generate request ID
         request_id = f"{int(time.time() * 1000)}-{os.getpid()}"
+        
+        # Extract request details from scope
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        client = scope.get("client", ("", 0))
+        client_ip = client[0] if client else "unknown"
+        
+        # Get headers
+        headers = dict(scope.get("headers", []))
+        user_agent = headers.get(b"user-agent", b"").decode("utf-8", errors="replace")
         
         # Log request
         logger.bind(access=True).info(
             json.dumps({
                 "type": "request",
                 "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "query_params": str(request.query_params),
-                "client_ip": request.client.host,
-                "user_agent": request.headers.get("user-agent", ""),
+                "method": method,
+                "path": path,
+                "client_ip": client_ip,
+                "user_agent": user_agent,
             })
         )
         
+        # Create a wrapper for send to intercept the response status
+        response_status = [200]  # Default status code
+        
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                # Capture the status code
+                response_status[0] = message["status"]
+                
+                # Add custom headers
+                process_time = time.time() - start_time
+                message["headers"].append((b"X-Process-Time", str(process_time).encode()))
+                message["headers"].append((b"X-Request-ID", request_id.encode()))
+            
+            await send(message)
+        
         # Process request
         try:
-            response = await call_next(request)
+            await self.app(scope, receive, send_wrapper)
             
             # Calculate processing time
             process_time = time.time() - start_time
@@ -188,23 +220,19 @@ class RequestLoggingMiddleware:
                 json.dumps({
                     "type": "response",
                     "request_id": request_id,
-                    "status_code": response.status_code,
+                    "status_code": response_status[0],
                     "process_time_ms": round(process_time * 1000, 2),
+                    "path": path,
+                    "method": method,
                 })
             )
-            
-            # Add processing time header
-            response.headers["X-Process-Time"] = str(process_time)
-            response.headers["X-Request-ID"] = request_id
-            
-            return response
         except Exception as e:
             # Log exception
             logger.error(
                 f"Error processing request: {str(e)}",
                 exc_info=True,
-                request_id=request_id,
             )
+            # Re-raise the exception for FastAPI to handle
             raise
 
 # Helper functions for logging
