@@ -30,13 +30,13 @@ app = FastAPI(
     
     This API currently does not require authentication.
     """,
-    version="0.1.0",
+    version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     contact={
-        "name": "API Support",
-        "email": "support@example.com",
+        "name": "Muhammad Irfan",
+        "email": "mrfansi@outlook.com",
     },
     license_info={
         "name": "MIT",
@@ -81,7 +81,7 @@ app.include_router(api_router, prefix=settings.api_prefix)
 async def root():
     return {
         "name": "Video Extractor API",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "description": "API for converting videos to optimized formats and uploading to Cloudflare R2"
     }
 
