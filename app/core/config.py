@@ -1,10 +1,17 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, ConfigDict
 from typing import Optional
 import os
 from pathlib import Path
 
 class Settings(BaseSettings):
+    # Use ConfigDict instead of class Config to avoid deprecation warning
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
+    
     # API Settings
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
@@ -22,11 +29,6 @@ class Settings(BaseSettings):
     temp_dir: str = Field(default="/tmp/video-extractor")
     max_workers: int = Field(default=4)
     max_upload_size_mb: int = Field(default=500)
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 # Create temp directory if it doesn't exist
 def create_temp_dir(temp_dir: str) -> None:

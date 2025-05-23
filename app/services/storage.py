@@ -20,7 +20,8 @@ class R2Storage:
             's3',
             endpoint_url=self.endpoint_url,
             aws_access_key_id=self.access_key_id,
-            aws_secret_access_key=self.secret_access_key
+            aws_secret_access_key=self.secret_access_key,
+            region_name='auto'  # Cloudflare R2 uses 'auto' region
         )
     
     async def upload_files(self, files_info: Dict) -> Dict:
