@@ -498,150 +498,236 @@ class VideoConverter:
         start_time = time.time()
         
         try:
-            # Update job status to processing
-            job.update_status(JobStatus.PROCESSING)
-            logger.info(f"Processing job {job.id}")
+            # Initialize job processing
+            self._initialize_job(job)
             
-            # Get original file size
-            original_size = self.get_file_size_mb(job.temp_file_path)
-            job.original_size_mb = original_size
+            # Get video metadata and prepare conversion parameters
+            original_size, video_info, ffmpeg_options = self._prepare_conversion_parameters(job)
             
-            # Get video information for adaptive optimizations
-            try:
-                video_info = self._get_video_info(job.temp_file_path)
-                logger.info(f"Video info for job {job.id}: {video_info}")
-            except Exception as e:
-                logger.warning(f"Failed to get video info for job {job.id}: {str(e)}")
-                video_info = None
-            
-            # Get FFmpeg options based on optimization level and video characteristics
-            ffmpeg_options = self.get_ffmpeg_options(
-                job.optimize_level, job.preserve_audio, video_info
+            # Execute conversions with optimized thread allocation
+            conversion_results, failed_formats = self._execute_conversions(
+                job, original_size, ffmpeg_options
             )
             
-            # Calculate optimal worker count based on system resources and job requirements
-            optimal_workers = self._calculate_optimal_workers(job.formats)
+            # Upload results to storage
+            upload_results = self._upload_converted_files(job, conversion_results)
             
-            # Process each requested format
-            conversion_results = {}
-            futures = {}
-            failed_formats = []
+            # Clean up temporary files
+            self._cleanup_temp_files(job, conversion_results)
             
-            # Create a thread pool with optimal worker count
-            with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
-                # Submit conversion tasks for each format
-                for fmt in job.formats:
-                    logger.info(f"Submitting format {fmt} for job {job.id}")
-                    
-                    format_options = ffmpeg_options.get(fmt, {})
-                    if not format_options:
-                        logger.warning(f"No options found for format {fmt}, skipping")
-                        continue
-                    
-                    future = executor.submit(
-                        self.convert_video,
-                        job.temp_file_path,
-                        fmt,
-                        format_options,
-                        job.preserve_audio,
-                    )
-                    futures[future] = fmt
-                
-                # Wait for all conversions to complete with timeout handling
-                for future in as_completed(futures):
-                    fmt = futures[future]
-                    try:
-                        # Set a reasonable timeout based on video size and format
-                        timeout = self._calculate_timeout(original_size, fmt)
-                        converted_file_path = future.result(timeout=timeout)
-                        conversion_results[fmt] = converted_file_path
-                        logger.info(f"Conversion for format {fmt} completed successfully")
-                    except TimeoutError:
-                        logger.error(f"Conversion for format {fmt} timed out after {timeout} seconds")
-                        failed_formats.append(fmt)
-                    except Exception as e:
-                        logger.error(f"Conversion for format {fmt} failed: {str(e)}")
-                        failed_formats.append(fmt)
+            # Finalize job status
+            self._finalize_job_status(job, failed_formats, upload_results)
             
-            # Check if all conversions failed
-            if not conversion_results and job.formats:
-                raise VideoProcessingError(f"All conversions failed for job {job.id}")
-            
-            # Upload converted files to R2
-            upload_results = {}
-            for fmt, file_path in conversion_results.items():
-                try:
-                    # Generate object key for R2
-                    object_key = f"{fmt}/{Path(file_path).stem}.{fmt}"
-                    
-                    # Upload to R2 with retry logic
-                    public_url, size_mb = self._upload_with_retry(file_path, object_key)
-                    
-                    # Add converted file to job
-                    job.add_converted_file(fmt, public_url, size_mb)
-                    upload_results[fmt] = True
-                    
-                    # Remove temporary converted file
-                    os.remove(file_path)
-                    
-                except Exception as e:
-                    upload_results[fmt] = False
-                    logger.error(f"Failed to upload {fmt} file: {str(e)}")
-            
-            # Remove original temporary file
-            if os.path.exists(job.temp_file_path):
-                os.remove(job.temp_file_path)
-            
-            # Determine final job status based on results
-            if failed_formats or not all(upload_results.values()):
-                # Some formats failed but others succeeded
-                job.update_status(
-                    JobStatus.PARTIALLY_COMPLETED,
-                    error=f"Failed formats: {', '.join(failed_formats)}"
-                )
-                logger.warning(
-                    f"Job {job.id} partially completed. "
-                    f"Failed formats: {failed_formats}"
-                )
-            else:
-                # All formats completed successfully
-                job.update_status(JobStatus.COMPLETED)
-                logger.info(f"Job {job.id} completed successfully")
-            
-            # Log performance metrics
+            # Log completion metrics
             total_time = time.time() - start_time
             logger.info(
-                f"Job {job.id} processing completed in {total_time:.2f}s. "
+                f"Job {job.id} completed in {total_time:.2f}s. "
                 f"Original size: {original_size:.2f}MB, "
                 f"Formats: {list(conversion_results.keys())}"
             )
             
         except Exception as e:
-            total_time = time.time() - start_time
-            error_message = f"Error processing job {job.id}: {str(e)}"
-            logger.error(f"{error_message} (after {total_time:.2f}s)")
+            self._handle_job_failure(job, e, start_time)
+    
+    def _initialize_job(self, job: ConversionJob) -> None:
+        """Initialize job processing and update status."""
+        job.update_status(JobStatus.PROCESSING)
+        logger.info(f"Processing job {job.id}")
+    
+    def _prepare_conversion_parameters(self, job: ConversionJob) -> Tuple[float, Optional[Dict], Dict]:
+        """
+        Prepare parameters for video conversion including file size, video info, and FFmpeg options.
+        
+        Returns:
+            Tuple of (original_size, video_info, ffmpeg_options)
+        """
+        # Get original file size
+        original_size = self.get_file_size_mb(job.temp_file_path)
+        job.original_size_mb = original_size
+        
+        # Get video information for adaptive optimizations
+        video_info = None
+        try:
+            video_info = self._get_video_info(job.temp_file_path)
+            logger.info(f"Video info for job {job.id}: {video_info}")
+        except Exception as e:
+            logger.warning(f"Failed to get video info for job {job.id}: {str(e)}")
+        
+        # Get FFmpeg options based on optimization level and video characteristics
+        ffmpeg_options = self.get_ffmpeg_options(
+            job.optimize_level, job.preserve_audio, video_info
+        )
+        
+        return original_size, video_info, ffmpeg_options
+    
+    def _execute_conversions(
+        self, job: ConversionJob, original_size: float, ffmpeg_options: Dict
+    ) -> Tuple[Dict[str, str], List[str]]:
+        """
+        Execute video conversions for all requested formats with optimized thread allocation.
+        
+        Returns:
+            Tuple of (conversion_results, failed_formats)
+        """
+        # Calculate optimal worker count based on system resources and job requirements
+        optimal_workers = self._calculate_optimal_workers(job.formats)
+        logger.info(f"Using {optimal_workers} worker threads for job {job.id}")
+        
+        # Process each requested format
+        conversion_results = {}
+        futures = {}
+        failed_formats = []
+        
+        # Create a thread pool with optimal worker count
+        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+            # Submit conversion tasks for each format
+            for fmt in job.formats:
+                self._submit_conversion_task(
+                    executor, job, fmt, ffmpeg_options, futures
+                )
             
-            # Update job status to failed
-            job.update_status(JobStatus.FAILED, error=error_message)
-            
-            # Clean up temporary files
+            # Wait for all conversions to complete with timeout handling
+            for future in as_completed(futures):
+                fmt = futures[future]
+                result = self._process_conversion_result(
+                    future, fmt, original_size, conversion_results, failed_formats
+                )
+        
+        # Check if all conversions failed
+        if not conversion_results and job.formats:
+            raise VideoProcessingError(f"All conversions failed for job {job.id}")
+        
+        return conversion_results, failed_formats
+    
+    def _submit_conversion_task(
+        self, executor: ThreadPoolExecutor, job: ConversionJob, fmt: str, 
+        ffmpeg_options: Dict, futures: Dict
+    ) -> None:
+        """Submit a single format conversion task to the thread pool."""
+        logger.info(f"Submitting format {fmt} for job {job.id}")
+        
+        format_options = ffmpeg_options.get(fmt, {})
+        if not format_options:
+            logger.warning(f"No options found for format {fmt}, skipping")
+            return
+        
+        future = executor.submit(
+            self.convert_video,
+            job.temp_file_path,
+            fmt,
+            format_options,
+            job.preserve_audio,
+        )
+        futures[future] = fmt
+    
+    def _process_conversion_result(
+        self, future, fmt: str, original_size: float, 
+        conversion_results: Dict[str, str], failed_formats: List[str]
+    ) -> None:
+        """Process the result of a conversion task."""
+        try:
+            # Set a reasonable timeout based on video size and format
+            timeout = self._calculate_timeout(original_size, fmt)
+            converted_file_path = future.result(timeout=timeout)
+            conversion_results[fmt] = converted_file_path
+            logger.info(f"Conversion for format {fmt} completed successfully")
+        except TimeoutError:
+            logger.error(f"Conversion for format {fmt} timed out after {timeout} seconds")
+            failed_formats.append(fmt)
+        except Exception as e:
+            logger.error(f"Conversion for format {fmt} failed: {str(e)}")
+            failed_formats.append(fmt)
+    
+    def _upload_converted_files(
+        self, job: ConversionJob, conversion_results: Dict[str, str]
+    ) -> Dict[str, bool]:
+        """
+        Upload converted files to R2 storage.
+        
+        Returns:
+            Dictionary mapping formats to upload success status
+        """
+        upload_results = {}
+        for fmt, file_path in conversion_results.items():
             try:
-                # Remove original file
-                if os.path.exists(job.temp_file_path):
-                    os.remove(job.temp_file_path)
+                # Generate object key for R2
+                object_key = f"{fmt}/{Path(file_path).stem}.{fmt}"
                 
-                # Remove any partially converted files
-                for fmt in job.formats:
-                    output_file = str(
-                        Path(job.temp_file_path).parent
-                        / f"{Path(job.temp_file_path).stem}.{fmt}"
-                    )
-                    if os.path.exists(output_file):
-                        os.remove(output_file)
-            except Exception as cleanup_error:
-                logger.error(f"Error during cleanup: {str(cleanup_error)}")
-
-
+                # Upload to R2 with retry logic
+                public_url, size_mb = self._upload_with_retry(file_path, object_key)
+                
+                # Add converted file to job
+                job.add_converted_file(fmt, public_url, size_mb)
+                upload_results[fmt] = True
+                
+            except Exception as e:
+                upload_results[fmt] = False
+                logger.error(f"Failed to upload {fmt} file: {str(e)}")
+        
+        return upload_results
+    
+    def _cleanup_temp_files(self, job: ConversionJob, conversion_results: Dict[str, str]) -> None:
+        """Clean up temporary files after processing."""
+        # Remove temporary converted files
+        for file_path in conversion_results.values():
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove temporary file {file_path}: {str(e)}")
+        
+        # Remove original temporary file
+        try:
+            if os.path.exists(job.temp_file_path):
+                os.remove(job.temp_file_path)
+        except Exception as e:
+            logger.warning(f"Failed to remove original file {job.temp_file_path}: {str(e)}")
+    
+    def _finalize_job_status(
+        self, job: ConversionJob, failed_formats: List[str], upload_results: Dict[str, bool]
+    ) -> None:
+        """Determine and update final job status based on results."""
+        if failed_formats or not all(upload_results.values()):
+            # Some formats failed but others succeeded
+            job.update_status(
+                JobStatus.PARTIALLY_COMPLETED,
+                error=f"Failed formats: {', '.join(failed_formats)}"
+            )
+            logger.warning(
+                f"Job {job.id} partially completed. "
+                f"Failed formats: {failed_formats}"
+            )
+        else:
+            # All formats completed successfully
+            job.update_status(JobStatus.COMPLETED)
+            logger.info(f"Job {job.id} completed successfully")
+    
+    def _handle_job_failure(self, job: ConversionJob, exception: Exception, start_time: float) -> None:
+        """Handle job failure with proper error logging and cleanup."""
+        total_time = time.time() - start_time
+        error_message = f"Error processing job {job.id}: {str(exception)}"
+        logger.error(f"{error_message} (after {total_time:.2f}s)")
+        
+        # Update job status to failed
+        job.update_status(JobStatus.FAILED, error=error_message)
+        
+        # Clean up temporary files
+        try:
+            # Remove original file
+            if os.path.exists(job.temp_file_path):
+                os.remove(job.temp_file_path)
+            
+            # Remove any partially converted files
+            for fmt in job.formats:
+                output_file = str(
+                    Path(job.temp_file_path).parent
+                    / f"{Path(job.temp_file_path).stem}.{fmt}"
+                )
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+        except Exception as cleanup_error:
+            logger.error(f"Error during cleanup: {str(cleanup_error)}")
+    
     def _calculate_optimal_workers(self, formats: List[str]) -> int:
         """
         Calculate optimal number of worker threads based on formats and system resources.
@@ -655,6 +741,10 @@ class VideoConverter:
         # Get available CPU cores
         cpu_count = psutil.cpu_count(logical=True)
         
+        # Get system memory information
+        memory = psutil.virtual_memory()
+        available_memory_gb = memory.available / (1024 * 1024 * 1024)
+        
         # Base worker count on available CPUs, but cap at 4 based on profiling results
         # which showed diminishing returns beyond 4 threads
         base_workers = min(4, cpu_count)
@@ -662,12 +752,17 @@ class VideoConverter:
         # Adjust based on number of formats
         format_count = len(formats)
         
-        # If we have multiple formats, we need at least that many workers
-        # but still respect our upper limit based on profiling results
-        if format_count > 1:
-            return min(max(format_count, base_workers), 8)
+        # Check for memory constraints (each worker might need ~500MB)
+        memory_based_workers = max(1, int(available_memory_gb / 0.5))
         
-        return base_workers
+        # If we have multiple formats, we need at least that many workers
+        # but still respect our upper limits based on profiling results and memory
+        if format_count > 1:
+            # Consider both CPU and memory constraints
+            return min(max(format_count, base_workers), memory_based_workers, 8)
+        
+        # For single format, respect memory constraints
+        return min(base_workers, memory_based_workers)
     
     def _calculate_timeout(self, file_size_mb: float, format: str) -> int:
         """

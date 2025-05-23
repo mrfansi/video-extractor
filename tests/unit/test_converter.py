@@ -1,6 +1,7 @@
 import os
 import pytest
 import time
+import psutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -115,15 +116,29 @@ class TestVideoConverter:
         webm_threads = video_converter._get_optimal_thread_count("webm")
         assert webm_threads == 2  # Based on our profiling results
 
-    def test_calculate_optimal_workers(self, video_converter):
+    def test_calculate_optimal_workers(self, video_converter, monkeypatch):
         """Test _calculate_optimal_workers method."""
-        # Single format should use base worker count
+        # Mock psutil.virtual_memory to return a consistent value for testing
+        class MockMemoryInfo:
+            def __init__(self):
+                self.available = 8 * 1024 * 1024 * 1024  # 8GB available memory
+        
+        # Apply the mock
+        monkeypatch.setattr(psutil, 'virtual_memory', lambda: MockMemoryInfo())
+        
+        # Single format should use base worker count (limited by CPU, not memory)
         single_format_workers = video_converter._calculate_optimal_workers(["mp4"])
         assert single_format_workers <= 4  # Based on our profiling results
-
-        # Multiple formats should use at least as many workers as formats
+        
+        # Multiple formats should adapt based on format count, CPU, and memory
+        # With 8GB available memory, we should have enough for all formats
         multi_format_workers = video_converter._calculate_optimal_workers(["mp4", "webm", "mov"])
-        assert multi_format_workers >= 3
+        
+        # The worker count should be at least the minimum of:
+        # 1. The number of formats (3)
+        # 2. The available memory-based workers (16 with 8GB, at 500MB per worker)
+        # 3. The maximum cap of 8 based on profiling results
+        assert multi_format_workers >= 3  # At least as many as formats
         assert multi_format_workers <= 8  # Upper limit based on profiling
 
     def test_calculate_timeout(self, video_converter):
