@@ -50,9 +50,9 @@ class VideoConverter:
         cpu_count = psutil.cpu_count(logical=True)
         logger.info(f"Initializing VideoConverter with max_workers={max_workers}, available CPUs={cpu_count}")
 
-    def save_upload_file(self, file) -> Tuple[str, str]:
+    async def save_upload_file(self, file) -> Tuple[str, str]:
         """
-        Save an uploaded file to a temporary location.
+        Save an uploaded file to a temporary location asynchronously.
         
         Args:
             file: FastAPI UploadFile object
@@ -73,9 +73,15 @@ class VideoConverter:
                 self.temp_dir, f"{unique_id}{file_extension}"
             )
             
-            # Save uploaded file to temporary location
-            with open(temp_file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+            # Save uploaded file to temporary location using aiofiles for async I/O
+            import aiofiles
+            
+            # Read the file content
+            content = await file.read()
+            
+            # Write to the temporary file asynchronously
+            async with aiofiles.open(temp_file_path, "wb") as buffer:
+                await buffer.write(content)
             
             logger.info(f"Saved uploaded file to {temp_file_path}")
             
@@ -388,6 +394,10 @@ class VideoConverter:
         Returns:
             Path to the converted video file
         """
+        # Initialize output_file variable for exception handling
+        output_file = ""
+        start_time = time.time()
+        
         try:
             # Create output file path
             input_path = Path(input_file)
@@ -401,12 +411,9 @@ class VideoConverter:
             # Start with input file
             stream = ffmpeg.input(input_file)
             
-            # Configure video stream
-            video_stream = ffmpeg.filter(
-                stream.video, 
-                'fps', 
-                fps=30
-            )
+            # Get video stream - no need to apply fps filter by default
+            # as it can cause compatibility issues with some videos
+            video_stream = stream.video
             
             # Apply video codec and options
             video_codec = options["video_codec"]
@@ -422,18 +429,22 @@ class VideoConverter:
             # Log conversion parameters
             logger.info(f"Converting with {thread_count} threads, codec: {video_codec}, options: {video_options}")
             
-            video_output = ffmpeg.output(
-                video_stream, 
-                output_file,
-                **video_args,
-                vcodec=video_codec
-            )
+            # Check if the input file has an audio stream
+            has_audio = False
+            try:
+                # Probe the input file to check for audio streams
+                probe = ffmpeg.probe(input_file)
+                audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+                has_audio = len(audio_streams) > 0
+                logger.info(f"Input file has audio: {has_audio}")
+            except Exception as e:
+                logger.warning(f"Failed to probe for audio streams: {str(e)}")
             
-            # Configure audio if needed
-            if preserve_audio and options["audio_codec"]:
+            # Configure output with or without audio
+            if preserve_audio and has_audio and "audio_codec" in options and options["audio_codec"]:
                 audio_codec = options["audio_codec"]
                 
-                # Add audio to output
+                # Add audio to output (combining video and audio streams)
                 video_output = ffmpeg.output(
                     video_stream,
                     stream.audio,
@@ -442,16 +453,32 @@ class VideoConverter:
                     vcodec=video_codec,
                     acodec=audio_codec
                 )
+            else:
+                # Video only output
+                video_output = ffmpeg.output(
+                    video_stream, 
+                    output_file,
+                    **video_args,
+                    vcodec=video_codec
+                )
             
             # Run FFmpeg conversion with progress monitoring
-            start_time = time.time()
             logger.info(f"Starting conversion of {input_file} to {output_format}")
             
-            ffmpeg.run(
-                video_output,
-                overwrite_output=True,
-                quiet=True
-            )
+            try:
+                # Run FFmpeg with stderr capture for better debugging
+                ffmpeg.run(
+                    video_output,
+                    overwrite_output=True,
+                    quiet=False,  # Show FFmpeg output for debugging
+                    capture_stdout=True,
+                    capture_stderr=True
+                )
+            except ffmpeg.Error as e:
+                # Log the stderr output from FFmpeg for better debugging
+                stderr = e.stderr.decode('utf-8') if e.stderr else "No stderr output"
+                logger.error(f"FFmpeg stderr: {stderr}")
+                raise
             
             # Calculate conversion time
             conversion_time = time.time() - start_time
@@ -470,19 +497,21 @@ class VideoConverter:
             return output_file
             
         except ffmpeg.Error as e:
+            # Get detailed error information from FFmpeg
+            stderr = e.stderr.decode('utf-8') if hasattr(e, 'stderr') and e.stderr else "No stderr output"
             error_message = f"FFmpeg error during conversion to {output_format}: {str(e)}"
-            logger.error(error_message)
+            logger.error(f"{error_message}\nFFmpeg stderr: {stderr}")
             
-            if os.path.exists(output_file):
+            if output_file and os.path.exists(output_file):
                 os.remove(output_file)
                 
-            raise VideoProcessingError(error_message)
+            raise VideoProcessingError(f"{error_message}\nFFmpeg stderr: {stderr}")
             
         except Exception as e:
             error_message = f"Error during conversion to {output_format}: {str(e)}"
             logger.error(error_message)
             
-            if os.path.exists(output_file):
+            if output_file and os.path.exists(output_file):
                 os.remove(output_file)
                 
             raise VideoProcessingError(error_message)

@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 from typing import List, Optional
 from uuid import UUID
 
@@ -21,7 +22,28 @@ from app.schemas.video import (
 from app.services.converter import converter
 from app.services.metrics_collector import metrics_collector
 
-router = APIRouter()
+router = APIRouter(tags=["video"])
+
+
+def process_job_wrapper(job: ConversionJob) -> None:
+    """
+    Wrapper function to run the async process_job method in a background task.
+    
+    Args:
+        job: ConversionJob object to process
+    """
+    # Create a new event loop for the background task
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Run the async process_job method in the new event loop
+        loop.run_until_complete(converter.process_job(job))
+    except Exception as e:
+        logger.error(f"Error in background task: {str(e)}")
+    finally:
+        # Close the event loop
+        loop.close()
 
 
 @router.post(
@@ -91,7 +113,7 @@ async def start_conversion(
         create_job(job)
         
         # Schedule the job for processing in the background
-        background_tasks.add_task(converter.process_job, job)
+        background_tasks.add_task(process_job_wrapper, job)
         
         # Log successful request
         logger.info(
