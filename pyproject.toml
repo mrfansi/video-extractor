@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "video-extractor"
+version = "0.1.0"
+description = "A Python-based API for video conversion and optimization with Cloudflare R2 storage"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.103.1"
+uvicorn = "^0.23.2"
+python-multipart = "^0.0.6"
+ffmpeg-python = "^0.2.0"
+boto3 = "^1.28.53"
+pydantic = "^2.4.2"
+pydantic-settings = "^2.0.3"
+python-dotenv = "^1.0.0"
+asyncio = "^3.4.3"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.9.1"
+pylint = "^2.17.5"
+pytest = "^7.4.2"
+pytest-asyncio = "^0.21.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-docstring",
+    "too-few-public-methods",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
