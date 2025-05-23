@@ -98,6 +98,15 @@ Prometheus-compatible metrics endpoint for monitoring the API.
 - FFmpeg
 - Cloudflare R2 account (or compatible S3 storage)
 
+### Compatibility Notes
+
+This project has been updated to use:
+- FastAPI's new lifespan context manager (replacing deprecated `on_event` handlers)
+- Pydantic V2 field validators (replacing deprecated V1 validators)
+- Timezone-aware datetime objects (replacing deprecated `datetime.utcnow()`)
+
+All code is compatible with the latest versions of FastAPI and Pydantic.
+
 ### Environment Variables
 
 Create a `.env` file with the following variables:
