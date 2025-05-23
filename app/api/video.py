@@ -5,6 +5,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 from app.core.config import settings
@@ -142,7 +143,6 @@ async def start_conversion(
 
 @router.get(
     "/{request_id}",
-    response_model=ConversionStatusBase,
     summary="Get conversion status",
     description="Check the status of a conversion request",
     response_description="Status response, which could be processing, completed, or error",
@@ -226,15 +226,18 @@ async def get_conversion_status(request_id: UUID):
                     ratio = job.converted_sizes_mb[fmt] / job.original_size_mb
                     metrics_collector.record_compression_ratio(fmt, ratio)
         
-        # Return completed response
-        return ConversionCompletedResponse(
-            status="completed",
-            converted_files=job.converted_files,
-            metadata=FileMetadata(
-                original_size_mb=job.original_size_mb,
-                converted_sizes_mb=job.converted_sizes_mb,
-                compression_ratio=job.compression_ratios,
-            ),
+        # Return completed response with explicit status code 200
+        return JSONResponse(
+            status_code=200,
+            content=ConversionCompletedResponse(
+                status="completed",
+                converted_files=job.converted_files,
+                metadata=FileMetadata(
+                    original_size_mb=job.original_size_mb,
+                    converted_sizes_mb=job.converted_sizes_mb,
+                    compression_ratio=job.compression_ratios,
+                ),
+            ).dict()
         )
     
     elif job.status == JobStatus.FAILED:

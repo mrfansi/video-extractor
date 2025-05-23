@@ -399,10 +399,10 @@ class VideoConverter:
         start_time = time.time()
         
         try:
-            # Create output file path
+            # Create output file path with a unique suffix to avoid in-place editing
             input_path = Path(input_file)
             output_file = str(
-                input_path.parent / f"{input_path.stem}.{output_format}"
+                input_path.parent / f"{input_path.stem}_converted.{output_format}"
             )
             
             # Get video information for adaptive optimizations

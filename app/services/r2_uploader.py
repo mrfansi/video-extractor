@@ -26,6 +26,7 @@ class R2Uploader:
                 endpoint_url=settings.R2_ENDPOINT_URL,
                 aws_access_key_id=settings.R2_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+                region_name=settings.R2_REGION,  # Use the region from settings
             )
             
             # Try to ensure bucket exists, but don't fail if it doesn't
