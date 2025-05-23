@@ -1,4 +1,5 @@
 import os
+import random
 import shutil
 import tempfile
 import threading
@@ -814,14 +815,16 @@ class VideoConverter:
         
         return base_timeout
     
-    def _upload_with_retry(self, file_path: str, object_key: str, max_retries: int = 3) -> Tuple[str, float]:
+    def _upload_with_retry(self, file_path: str, object_key: str, max_retries: int = 5, base_delay: float = 0.5, max_delay: float = 30.0) -> Tuple[str, float]:
         """
-        Upload a file to R2 with retry logic.
+        Upload a file to R2 with exponential backoff retry logic.
         
         Args:
             file_path: Path to the file to upload
             object_key: Object key for R2
             max_retries: Maximum number of retry attempts
+            base_delay: Initial delay between retries in seconds
+            max_delay: Maximum delay between retries in seconds
             
         Returns:
             Tuple of (public_url, size_mb)
@@ -833,15 +836,39 @@ class VideoConverter:
             try:
                 # Upload to R2
                 public_url, size_mb = r2_uploader.upload_file(file_path, object_key)
+                
+                # If successful after retries, log it
+                if retries > 0:
+                    logger.info(f"Successfully uploaded {object_key} after {retries} retries")
+                    
                 return public_url, size_mb
+                
             except Exception as e:
                 retries += 1
                 last_error = e
-                logger.warning(f"Upload attempt {retries} failed: {str(e)}. Retrying...")
-                time.sleep(1)  # Wait before retrying
+                
+                if retries >= max_retries:
+                    logger.error(f"Upload failed after {max_retries} attempts: {str(e)}")
+                    break
+                    
+                # Calculate delay with exponential backoff and jitter
+                # Formula: min(max_delay, base_delay * 2^retry) + random jitter
+                delay = min(max_delay, base_delay * (2 ** (retries - 1)))
+                # Add jitter (random value between 0 and 20% of the delay)
+                jitter = random.uniform(0, 0.2 * delay)
+                total_delay = delay + jitter
+                
+                logger.warning(
+                    f"Upload attempt {retries} failed: {str(e)}. "
+                    f"Retrying in {total_delay:.2f} seconds..."
+                )
+                
+                time.sleep(total_delay)
         
         # If we get here, all retries failed
-        raise Exception(f"Failed to upload after {max_retries} attempts: {str(last_error)}")
+        error_msg = f"Failed to upload {object_key} after {max_retries} attempts: {str(last_error)}"
+        logger.error(error_msg)
+        raise StorageError(error_msg)
 
 
 # Singleton instance
