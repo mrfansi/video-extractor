@@ -11,3 +11,5 @@ python-magic>=0.4.27
 pytest
 pytest-asyncio
 httpx
+loguru>=0.7.0
+python-json-logger>=2.0.7

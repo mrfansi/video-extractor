@@ -44,6 +44,7 @@ venv.bak/
 *.mkv
 *.mpeg
 *.ogg
+*.log
 
 # Temporary files
 .DS_Store

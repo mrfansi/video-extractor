@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import os
 import time
+import json
 from app.api.endpoints import router as api_router
 from app.core.config import settings
+from app.core.logging import logger, RequestLoggingMiddleware
 
 # Create FastAPI app
 app = FastAPI(
@@ -53,14 +55,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add request ID middleware
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
+
+# Log application startup
+logger.info(
+    json.dumps({
+        "event": "application_startup",
+        "version": app.version,
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "host": settings.api_host,
+        "port": settings.api_port,
+        "workers": settings.api_workers,
+        "api_prefix": settings.api_prefix
+    })
+)
 
 # Exception handler
 @app.exception_handler(Exception)
