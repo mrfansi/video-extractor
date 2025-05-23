@@ -9,8 +9,39 @@ from app.core.config import settings
 # Create FastAPI app
 app = FastAPI(
     title="Video Extractor API",
-    description="API for converting videos to optimized formats and uploading to Cloudflare R2",
-    version="0.1.0"
+    description="""
+    # Video Extractor API
+    
+    A Python-based API that accepts video files and converts them into multiple optimized formats
+    while maintaining original resolution and visual quality but reducing file size.
+    
+    ## Features
+    
+    - Convert videos to multiple formats (.mp4, .webm, .mov)
+    - Optimize videos using efficient codecs (H.264, VP9)
+    - Maintain original resolution and visual quality
+    - Reduce file size through advanced compression techniques
+    - Upload optimized videos to Cloudflare R2 bucket
+    - Store files in format-specific subdirectories
+    - Support concurrent processing
+    - Return JSON response with URLs of all uploaded videos
+    
+    ## Authentication
+    
+    This API currently does not require authentication.
+    """,
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    contact={
+        "name": "API Support",
+        "email": "support@example.com",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    }
 )
 
 # Add CORS middleware

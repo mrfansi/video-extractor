@@ -12,7 +12,86 @@ from app.utils.file_utils import save_upload_file, cleanup_temp_files, get_file_
 
 router = APIRouter(tags=["video"])
 
-@router.post("/convert", status_code=status.HTTP_200_OK, summary="Convert video to optimized formats", description="Upload a video file and convert it to multiple optimized formats (.mp4, .webm, .mov) while maintaining original resolution and visual quality. The optimized videos are uploaded to Cloudflare R2 and the response includes URLs for all formats.")
+@router.post("/convert", 
+          status_code=status.HTTP_200_OK, 
+          summary="Convert video to optimized formats", 
+          description="Upload a video file and convert it to multiple optimized formats (.mp4, .webm, .mov) while maintaining original resolution and visual quality. The optimized videos are uploaded to Cloudflare R2 and the response includes URLs for all formats.",
+          responses={
+              200: {
+                  "description": "Video successfully converted and uploaded",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "status": "success",
+                              "message": "Video processed successfully",
+                              "data": {
+                                  "original": {
+                                      "filename": "input.mp4",
+                                      "size": 10485760,
+                                      "resolution": "1920x1080"
+                                  },
+                                  "formats": {
+                                      "mp4": {
+                                          "filename": "output.mp4",
+                                          "size": 5242880,
+                                          "resolution": "1920x1080",
+                                          "url": "https://example.com/mp4/output.mp4"
+                                      },
+                                      "webm": {
+                                          "filename": "output.webm",
+                                          "size": 4194304,
+                                          "resolution": "1920x1080",
+                                          "url": "https://example.com/webm/output.webm"
+                                      },
+                                      "mov": {
+                                          "filename": "output.mov",
+                                          "size": 6291456,
+                                          "resolution": "1920x1080",
+                                          "url": "https://example.com/mov/output.mov"
+                                      }
+                                  }
+                              },
+                              "metadata": {
+                                  "original_size": 10485760,
+                                  "total_output_size": 15728640,
+                                  "compression_ratio": 0.67,
+                                  "formats_count": 3
+                              }
+                          }
+                      }
+                  }
+              },
+              400: {
+                  "description": "Bad request, invalid file",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "detail": "Unsupported file type. File must be a valid video."
+                          }
+                      }
+                  }
+              },
+              413: {
+                  "description": "File too large",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "detail": "File too large. Maximum size is 500MB"
+                          }
+                      }
+                  }
+              },
+              500: {
+                  "description": "Internal server error",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "detail": "Error processing video: [error details]"
+                          }
+                      }
+                  }
+              }
+          })
 async def convert_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -91,12 +170,46 @@ async def convert_video(
             detail=f"Error processing video: {str(e)}"
         )
 
-@router.get("/health", status_code=status.HTTP_200_OK, summary="Health check", description="Check if the API is running properly.")
+@router.get("/health", 
+          status_code=status.HTTP_200_OK, 
+          summary="Health check", 
+          description="Check if the API is running properly.",
+          responses={
+              200: {
+                  "description": "API is healthy",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "status": "ok"
+                          }
+                      }
+                  }
+              }
+          })
 async def health_check():
     """Health check endpoint"""
     return {"status": "ok"}
 
-@router.get("/formats", status_code=status.HTTP_200_OK, summary="Get supported formats", description="Get a list of supported input and output video formats.")
+@router.get("/formats", 
+          status_code=status.HTTP_200_OK, 
+          summary="Get supported formats", 
+          description="Get a list of supported input and output video formats.",
+          responses={
+              200: {
+                  "description": "List of supported formats",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "status": "success",
+                              "data": {
+                                  "input_formats": [".mp4", ".webm", ".mov", ".avi", ".mkv", ".mpeg", ".ogg"],
+                                  "output_formats": [".mp4", ".webm", ".mov"]
+                              }
+                          }
+                      }
+                  }
+              }
+          })
 async def supported_formats():
     """Get supported video formats"""
     return {
