@@ -1,10 +1,12 @@
 import os
+import psutil
 import random
 import shutil
 import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Optional, Union
 from pathlib import Path
@@ -323,8 +325,6 @@ class VideoConverter:
         Returns:
             Optimal thread count for the conversion
         """
-        import psutil
-        
         # Get available CPU cores
         cpu_count = psutil.cpu_count(logical=True)
         
@@ -1334,7 +1334,7 @@ class VideoConverter:
             'system_info': {
                 'cpu_count': psutil.cpu_count(logical=True),
                 'memory_available_gb': psutil.virtual_memory().available / (1024 * 1024 * 1024),
-                'system_load': psutil.getloadavg()[0],
+                'system_load': psutil.cpu_percent(interval=0.1),
             }
         }
         
@@ -1408,7 +1408,8 @@ class VideoConverter:
         # Get system memory information
         memory = psutil.virtual_memory()
         available_memory_gb = memory.available / (1024 * 1024 * 1024)
-        system_load = psutil.getloadavg()[0] / cpu_count  # Normalized load average (0-1+)
+        # Use CPU percent as a proxy for load on all platforms
+        system_load = psutil.cpu_percent(interval=0.1) / 100  # Normalized (0-1)
         
         # Base worker count on available CPUs, but cap at 4 based on profiling results
         # which showed diminishing returns beyond 4 threads
