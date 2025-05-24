@@ -1,4 +1,6 @@
 import os
+import random
+import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -8,6 +10,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.errors import StorageError
+from app.core.circuit_breaker import circuit_breaker, CircuitBreakerError
 
 
 class R2Uploader:
@@ -69,11 +72,17 @@ class R2Uploader:
         }
         return content_types.get(file_extension.lower(), 'application/octet-stream')
     
+    @circuit_breaker(
+        name='r2_storage',
+        failure_threshold=5,
+        reset_timeout=60,
+        half_open_max_calls=2
+    )
     def upload_file(
         self, file_path: str, object_key: Optional[str] = None
     ) -> Tuple[str, float]:
         """
-        Upload a file to R2 storage.
+        Upload a file to R2 storage with circuit breaker protection.
         
         Args:
             file_path: Path to the file to upload
@@ -81,6 +90,10 @@ class R2Uploader:
             
         Returns:
             Tuple containing public URL and file size in MB
+            
+        Raises:
+            StorageError: If the upload fails
+            CircuitBreakerError: If the circuit breaker is open due to previous failures
         """
         # Check if R2 is available
         if not self.is_available or self.s3_client is None:
@@ -131,15 +144,24 @@ class R2Uploader:
             logger.error(error_msg)
             raise StorageError(error_msg)
     
+    @circuit_breaker(
+        name='r2_storage',
+        failure_threshold=5,
+        reset_timeout=60,
+        half_open_max_calls=2
+    )
     def delete_file(self, object_key: str) -> bool:
         """
-        Delete a file from R2 storage.
+        Delete a file from R2 storage with circuit breaker protection.
         
         Args:
             object_key: Object key to delete
             
         Returns:
             True if deletion was successful, False otherwise
+            
+        Raises:
+            CircuitBreakerError: If the circuit breaker is open due to previous failures
         """
         # Check if R2 is available
         if not self.is_available or self.s3_client is None:
@@ -164,11 +186,24 @@ class R2Uploader:
             
         Returns:
             Dictionary mapping object keys to deletion status
+            
+        Note:
+            This method uses the circuit-breaker-protected delete_file method,
+            so it will respect the circuit breaker state.
         """
         results = {}
         
         for key in object_keys:
-            results[key] = self.delete_file(key)
+            try:
+                results[key] = self.delete_file(key)
+            except CircuitBreakerError as e:
+                # Circuit breaker is open, stop processing remaining files
+                logger.warning(f"Circuit breaker open during batch deletion: {str(e)}")
+                # Mark remaining files as failed
+                for remaining_key in object_keys:
+                    if remaining_key not in results:
+                        results[remaining_key] = False
+                break
         
         return results
 

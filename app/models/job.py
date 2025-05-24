@@ -31,6 +31,7 @@ class ConversionJob(BaseModel):
     updated_at: float = Field(default_factory=time.time)
     completed_at: Optional[float] = None
     error_message: Optional[str] = None
+    error_details: Optional[Dict] = None  # For storing detailed error context
     
     # For storing processing results
     original_size_mb: Optional[float] = None
@@ -57,6 +58,16 @@ class ConversionJob(BaseModel):
         if self.original_size_mb and size_mb > 0:
             ratio = (1 - (size_mb / self.original_size_mb)) * 100
             self.compression_ratios[format] = f"{ratio:.1f}%"
+            
+    def add_error_detail(self, error_context: Dict) -> None:
+        """
+        Add detailed error information for better debugging.
+        
+        Args:
+            error_context: Dictionary containing detailed error information
+        """
+        self.error_details = error_context
+        self.updated_at = time.time()
     
     def get_processing_time(self) -> Optional[float]:
         """Get processing time in seconds if job is completed."""
@@ -81,6 +92,7 @@ class ConversionJob(BaseModel):
             "preserve_audio": self.preserve_audio,
             "optimize_level": self.optimize_level.value,
             "error_message": self.error_message,
+            "error_details": self.error_details,  # Include detailed error information
             "converted_files": self.converted_files,
             "metadata": {
                 "original_size_mb": self.original_size_mb,
