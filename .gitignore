@@ -49,3 +49,5 @@ venv.bak/
 # Temporary files
 .DS_Store
 .windsurf/
+.coverage*
+reports/*

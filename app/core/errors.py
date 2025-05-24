@@ -36,6 +36,15 @@ class RequestNotFoundError(Exception):
         super().__init__(self.message)
 
 
+class CircuitBreakerError(Exception):
+    """Exception raised when a circuit breaker prevents an operation."""
+    
+    def __init__(self, service: str, message: str = None):
+        self.service = service
+        self.message = message or f"Circuit breaker for {service} is open. Operation rejected."
+        super().__init__(self.message)
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
     """Configure exception handlers for the FastAPI application."""
     
@@ -86,6 +95,19 @@ def setup_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content={"status": "error", "message": exc.message},
+        )
+    
+    @app.exception_handler(CircuitBreakerError)
+    async def circuit_breaker_exception_handler(request: Request, exc: CircuitBreakerError):
+        """Handle circuit breaker errors."""
+        logger.warning(f"Circuit breaker error: {exc.message} (Service: {exc.service})")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "error", 
+                "message": exc.message,
+                "service": exc.service
+            },
         )
     
     @app.exception_handler(Exception)

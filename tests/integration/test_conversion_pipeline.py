@@ -100,7 +100,7 @@ class TestConversionPipeline:
         
         # Verify job status
         assert sample_job.status == JobStatus.FAILED
-        assert "Error processing job" in sample_job.error_message
+        assert "All conversions failed for job" in sample_job.error_message
         assert len(sample_job.converted_files) == 0
     
     @pytest.mark.asyncio

@@ -359,11 +359,7 @@ class VideoConverter:
         duration = video_info.get("duration", 0)
         fps = video_info.get("fps", 0)
         codec = video_info.get("codec_name", "")
-        
-        # Apply format-specific optimizations first
-        for fmt in options:
-            self._optimize_format_specific(fmt, options[fmt], video_info)
-        
+
         # Adjust parameters based on resolution
         if width and height:
             resolution = width * height
@@ -597,54 +593,164 @@ class VideoConverter:
         # For general content, we keep the default settings
         logger.info(f"Applied content-specific optimizations for content type: {content_type}")
 
-    def _optimize_format_specific(self, fmt: str, options: Dict, video_info: Dict) -> None:
+    def _optimize_format_specific(self, fmt: str, options: Dict, video_info: Dict):
         """
-        Apply format-specific optimizations.
+        Apply format-specific optimizations with content-aware settings.
         
         Args:
             fmt: Format (mp4, webm, mov)
             options: FFmpeg options dictionary to modify
             video_info: Dictionary with video metadata
         """
-        # Extract relevant video information
-        width = video_info.get("width", 0)
-        height = video_info.get("height", 0)
-        bitrate = video_info.get("bitrate", 0)
-        duration = video_info.get("duration", 0)
-        fps = video_info.get("fps", 0)
-        codec = video_info.get("codec_name", "")
-
-        # Format-specific optimizations
-        if fmt == "mp4":
-            # For MP4, use a faster preset for high-res videos
-            if width * height >= 3840 * 2160 and options["options"].get("preset") == "slow":
-                options["options"]["preset"] = "medium"
-            
-            # For MP4, reduce CRF for better quality on low-res videos
-            if width * height <= 640 * 480:
-                crf = int(options["options"].get("crf", "23"))
-                options["options"]["crf"] = str(max(crf - 2, 18))
+        # Get basic video properties
+        width = video_info.get('width', 0)
+        height = video_info.get('height', 0)
+        bitrate = video_info.get('bit_rate', 0)
+        fps_str = video_info.get('r_frame_rate', '')
         
-        elif fmt == "webm":
-            # For WebM, adjust CPU usage based on resolution
-            if width * height >= 3840 * 2160:
-                cpu_used = int(options["options"].get("cpu-used", "4"))
-                options["options"]["cpu-used"] = str(min(cpu_used + 2, 8))
-            
-            # For WebM, reduce CRF for better quality on low-res videos
-            if width * height <= 640 * 480:
-                crf = int(options["options"].get("crf", "30"))
-                options["options"]["crf"] = str(max(crf - 3, 22))
+        # Calculate frame rate
+        fps = 0
+        if fps_str and '/' in fps_str:
+            try:
+                num, den = map(int, fps_str.split('/'))
+                fps = num / den if den != 0 else 0
+            except (ValueError, ZeroDivisionError):
+                pass
+                
+        # Detect content type for specialized optimizations
+        content_type = self._detect_content_type(video_info)
+        logger.debug(f"Optimizing {fmt} format for content type: {content_type}")
         
-        elif fmt == "mov":
-            # For MOV, use a faster preset for high-res videos
-            if width * height >= 3840 * 2160 and options["options"].get("preset") == "slow":
-                options["options"]["preset"] = "medium"
+        # MP4 optimizations
+        if fmt.lower() == 'mp4':
+            # Always use faststart for web streaming
+            options['movflags'] = '+faststart'
             
-            # For MOV, reduce CRF for better quality on low-res videos
-            if width * height <= 640 * 480:
-                crf = int(options["options"].get("crf", "23"))
-                options["options"]["crf"] = str(max(crf - 2, 18))
+            # Use appropriate pixel format
+            options['pix_fmt'] = 'yuv420p'
+            
+            # Resolution-based optimizations
+            if width and height:
+                resolution = width * height
+                if resolution > 3840 * 2160:  # 8K
+                    options['preset'] = 'slower'
+                    options['crf'] = '20'
+                elif resolution > 1920 * 1080:  # 4K
+                    options['preset'] = 'slow'
+                    options['crf'] = '22'
+                elif resolution > 1280 * 720:  # 1080p
+                    options['preset'] = 'medium'
+                    options['crf'] = '23'
+                else:  # 720p or lower
+                    options['preset'] = 'fast'
+                    options['crf'] = '25'
+            
+            # Content-specific optimizations for MP4
+            if content_type == 'animation':
+                options['tune'] = 'animation'
+                # Reduce CRF for better quality with animation
+                current_crf = int(options.get('crf', '23'))
+                options['crf'] = str(max(18, current_crf - 2))
+            elif content_type == 'film':
+                options['tune'] = 'film'
+                # Slightly reduce CRF for film content
+                current_crf = int(options.get('crf', '23'))
+                options['crf'] = str(max(20, current_crf - 1))
+            elif content_type == 'gaming':
+                # For gaming, prioritize speed and handle high motion
+                if fps >= 60:
+                    options['vsync'] = '1'  # Better frame syncing for high fps
+                    options['preset'] = 'faster'  # Faster encoding for high fps
+                else:
+                    # Use zerolatency tune for better motion handling
+                    options['tune'] = 'zerolatency'
+            elif content_type == 'screencast':
+                # For screencasts, prioritize text clarity
+                options['tune'] = 'stillimage'
+                current_crf = int(options.get('crf', '23'))
+                options['crf'] = str(max(18, current_crf - 3))  # Much better quality for text
+        
+        # WebM optimizations
+        elif fmt.lower() == 'webm':
+            # Use VP9 codec for better quality/size ratio
+            options['c:v'] = 'libvpx-vp9'
+            options['c:a'] = 'libopus'
+            options['b:a'] = '96k'  # Lower bitrate for opus is fine
+            
+            # Resolution-based optimizations
+            if width and height:
+                resolution = width * height
+                if resolution > 3840 * 2160:  # 8K
+                    options['deadline'] = 'good'
+                    options['cpu-used'] = '1'
+                    options['crf'] = '28'
+                elif resolution > 1920 * 1080:  # 4K
+                    options['deadline'] = 'good'
+                    options['cpu-used'] = '2'
+                    options['crf'] = '30'
+                elif resolution > 1280 * 720:  # 1080p
+                    options['deadline'] = 'good'
+                    options['cpu-used'] = '3'
+                    options['crf'] = '32'
+                else:  # 720p or lower
+                    options['deadline'] = 'realtime'
+                    options['cpu-used'] = '4'
+                    options['crf'] = '34'
+            
+            # Content-specific optimizations for WebM
+            if content_type == 'animation':
+                # Better quality for animation
+                options['deadline'] = 'good'
+                current_crf = int(options.get('crf', '32'))
+                options['crf'] = str(max(26, current_crf - 4))
+                options['cpu-used'] = '2'  # Better quality
+            elif content_type == 'film':
+                # Better quality for film
+                options['deadline'] = 'good'
+                current_crf = int(options.get('crf', '32'))
+                options['crf'] = str(max(28, current_crf - 2))
+            elif content_type == 'gaming':
+                # For gaming, prioritize speed
+                options['deadline'] = 'realtime'
+                options['cpu-used'] = '4'  # Faster encoding
+                if fps >= 60:
+                    # For high fps content, adjust tile-columns and frame-parallel
+                    options['tile-columns'] = '2'
+                    options['frame-parallel'] = '1'
+            elif content_type == 'screencast':
+                # For screencasts, prioritize text clarity
+                options['deadline'] = 'good'
+                options['cpu-used'] = '0'  # Best quality for text
+                current_crf = int(options.get('crf', '32'))
+                options['crf'] = str(max(24, current_crf - 6))  # Much better quality for text
+                
+        # GIF optimizations
+        elif fmt.lower() == 'gif':
+            # Content-specific optimizations for GIF
+            if content_type == 'animation':
+                options['fps'] = '12'  # Higher framerate for animation
+            elif content_type == 'gaming':
+                options['fps'] = '15'  # Higher framerate for gaming
+            elif content_type == 'screencast':
+                options['fps'] = '8'  # Lower framerate for screencasts
+            else:
+                options['fps'] = '10'  # Default
+                
+        # MOV optimizations
+        elif fmt.lower() == 'mov':
+            # Similar to MP4 but with some MOV-specific adjustments
+            options['pix_fmt'] = 'yuv420p'
+            
+            # Content-specific optimizations similar to MP4
+            if content_type == 'animation':
+                options['tune'] = 'animation'
+            elif content_type == 'film':
+                options['tune'] = 'film'
+            elif content_type == 'screencast':
+                options['tune'] = 'stillimage'
+                
+        # Log the optimized options
+        logger.debug(f"Format-specific optimizations for {fmt} ({content_type}): {options}")
 
     def _get_video_info(self, video_path: str) -> Dict:
         """
@@ -942,10 +1048,10 @@ class VideoConverter:
                     executor, job, fmt, ffmpeg_options, futures, video_info
                 )
             
-            # Monitor system resources during conversion
+            # Monitor system resources during conversion with dynamic worker adjustment
             monitor_thread = threading.Thread(
                 target=self._monitor_system_resources,
-                args=(job.id, optimal_workers)
+                args=(job.id, optimal_workers, executor)
             )
             monitor_thread.daemon = True  # Daemon thread will exit when main thread exits
             monitor_thread.start()
@@ -985,16 +1091,28 @@ class VideoConverter:
         # Sort formats by priority (descending)
         return sorted(formats, key=lambda fmt: format_priority.get(fmt, 0), reverse=True)
         
-    def _monitor_system_resources(self, job_id: str, initial_workers: int) -> None:
+    def _monitor_system_resources(self, job_id: str, initial_workers: int, executor: Optional[ThreadPoolExecutor] = None) -> None:
         """
-        Monitor system resources during conversion and log warnings if resources are constrained.
+        Monitor system resources during conversion and dynamically adjust worker count if needed.
         
         Args:
             job_id: ID of the job being processed
             initial_workers: Initial number of worker threads
+            executor: Optional ThreadPoolExecutor to adjust worker count dynamically
         """
-        check_interval = 5  # Check every 5 seconds
-        warning_threshold = 0.85  # 85% utilization is concerning
+        check_interval = 3  # Check every 3 seconds for more responsive adjustments
+        warning_threshold = 0.80  # 80% utilization triggers adjustment
+        critical_threshold = 0.90  # 90% utilization triggers more aggressive adjustment
+        adjustment_cooldown = 0  # Cooldown counter to prevent too frequent adjustments
+        cooldown_period = 2  # Wait for 2 checks before adjusting again
+        
+        # Store the current worker count
+        current_workers = initial_workers
+        
+        # Track resource history for trend analysis
+        cpu_history = []
+        memory_history = []
+        history_size = 3  # Number of data points to keep for trend analysis
         
         try:
             while True:
@@ -1003,20 +1121,66 @@ class VideoConverter:
                 memory = psutil.virtual_memory()
                 memory_percent = memory.percent / 100  # 0.0 to 1.0
                 
+                # Update history for trend analysis
+                cpu_history.append(cpu_percent)
+                memory_history.append(memory_percent)
+                if len(cpu_history) > history_size:
+                    cpu_history.pop(0)
+                    memory_history.pop(0)
+                
+                # Calculate trends (increasing or decreasing)
+                cpu_trend = sum(cpu_history) / len(cpu_history) if cpu_history else cpu_percent
+                memory_trend = sum(memory_history) / len(memory_history) if memory_history else memory_percent
+                
                 # Log resource utilization periodically
-                if cpu_percent > warning_threshold or memory_percent > warning_threshold:
-                    logger.warning(
-                        f"High resource utilization during job {job_id}: "
-                        f"CPU: {cpu_percent:.2%}, Memory: {memory_percent:.2%}"
-                    )
-                    
-                    # Suggest optimal worker count based on current system load
-                    suggested_workers = max(1, int(initial_workers * (1 - (cpu_percent - 0.7))))
-                    if suggested_workers < initial_workers:
-                        logger.warning(
-                            f"System under high load during job {job_id}. "
-                            f"Consider reducing worker threads from {initial_workers} to {suggested_workers}"
-                        )
+                logger.debug(
+                    f"Resource utilization for job {job_id}: "
+                    f"CPU: {cpu_percent:.2%}, Memory: {memory_percent:.2%}, "
+                    f"Workers: {current_workers}"
+                )
+                
+                # Check if we need to adjust worker count and if we're not in cooldown period
+                if adjustment_cooldown <= 0 and executor is not None:
+                    if cpu_percent > critical_threshold or memory_percent > critical_threshold:
+                        # Critical load - reduce workers more aggressively
+                        new_workers = max(1, int(current_workers * 0.6))  # Reduce by 40%
+                        if new_workers < current_workers:
+                            logger.warning(
+                                f"Critical resource utilization during job {job_id}: "
+                                f"CPU: {cpu_percent:.2%}, Memory: {memory_percent:.2%}. "
+                                f"Reducing worker threads from {current_workers} to {new_workers}"
+                            )
+                            self._adjust_thread_pool_size(executor, new_workers)
+                            current_workers = new_workers
+                            adjustment_cooldown = cooldown_period
+                    elif cpu_percent > warning_threshold or memory_percent > warning_threshold:
+                        # High load - reduce workers moderately
+                        new_workers = max(1, int(current_workers * 0.8))  # Reduce by 20%
+                        if new_workers < current_workers:
+                            logger.warning(
+                                f"High resource utilization during job {job_id}: "
+                                f"CPU: {cpu_percent:.2%}, Memory: {memory_percent:.2%}. "
+                                f"Reducing worker threads from {current_workers} to {new_workers}"
+                            )
+                            self._adjust_thread_pool_size(executor, new_workers)
+                            current_workers = new_workers
+                            adjustment_cooldown = cooldown_period
+                    elif cpu_trend < 0.5 and memory_trend < 0.6 and current_workers < initial_workers:
+                        # Low load and we previously reduced workers - try to increase back up to initial
+                        new_workers = min(initial_workers, current_workers + 1)
+                        if new_workers > current_workers:
+                            logger.info(
+                                f"Resource utilization is low for job {job_id}: "
+                                f"CPU: {cpu_percent:.2%}, Memory: {memory_percent:.2%}. "
+                                f"Increasing worker threads from {current_workers} to {new_workers}"
+                            )
+                            self._adjust_thread_pool_size(executor, new_workers)
+                            current_workers = new_workers
+                            adjustment_cooldown = cooldown_period
+                
+                # Decrement cooldown counter if needed
+                if adjustment_cooldown > 0:
+                    adjustment_cooldown -= 1
                 
                 # Sleep before next check
                 time.sleep(check_interval)
@@ -1025,6 +1189,26 @@ class VideoConverter:
             logger.error(f"Error in resource monitoring thread: {str(e)}")
         finally:
             logger.debug(f"Resource monitoring for job {job_id} completed")
+    
+    def _adjust_thread_pool_size(self, executor: ThreadPoolExecutor, new_worker_count: int) -> None:
+        """
+        Dynamically adjust the thread pool size during processing.
+        
+        Args:
+            executor: The ThreadPoolExecutor to adjust
+            new_worker_count: The new number of worker threads
+        """
+        try:
+            # This is a bit of a hack since ThreadPoolExecutor doesn't officially support
+            # dynamic resizing, but we can adjust the max_workers attribute
+            if hasattr(executor, '_max_workers'):
+                # Access the private attribute (not ideal but necessary)
+                executor._max_workers = new_worker_count
+                logger.debug(f"Adjusted thread pool size to {new_worker_count} workers")
+            else:
+                logger.warning("Could not adjust thread pool size: _max_workers attribute not found")
+        except Exception as e:
+            logger.error(f"Error adjusting thread pool size: {str(e)}")
     
     def _submit_conversion_task(
         self, executor: ThreadPoolExecutor, job: ConversionJob, fmt: str, 
@@ -1289,7 +1473,7 @@ class VideoConverter:
         
         # Update job status with detailed error information
         job.status = JobStatus.FAILED
-        job.error = str(exception)
+        job.error_message = str(exception)
         
         # Add detailed error context if available
         if error_context:
@@ -1392,76 +1576,280 @@ class VideoConverter:
     
     def _calculate_optimal_workers(self, formats: List[str], video_info: Optional[Dict] = None) -> int:
         """
-        Calculate optimal number of worker threads based on formats, video characteristics,
-        and system resources.
+        Calculate the optimal number of worker threads based on formats, video characteristics,
+        content type, and real-time system resource availability.
         
         Args:
             formats: List of output formats
-            video_info: Optional dictionary containing video metadata (resolution, duration, etc.)
+            video_info: Optional dictionary with video metadata
             
         Returns:
             Optimal number of worker threads
         """
-        # Get available CPU cores
+        # Base worker count - start with CPU count
         cpu_count = psutil.cpu_count(logical=True)
+        base_workers = min(cpu_count, settings.MAX_WORKERS)
         
-        # Get system memory information
+        # Adjust for current system load with more granular scaling
+        cpu_percent = psutil.cpu_percent() / 100  # Convert to 0-1 range
         memory = psutil.virtual_memory()
-        available_memory_gb = memory.available / (1024 * 1024 * 1024)
-        # Use CPU percent as a proxy for load on all platforms
-        system_load = psutil.cpu_percent(interval=0.1) / 100  # Normalized (0-1)
+        memory_percent = memory.percent / 100  # Convert to 0-1 range
         
-        # Base worker count on available CPUs, but cap at 4 based on profiling results
-        # which showed diminishing returns beyond 4 threads
-        base_workers = min(4, cpu_count)
-        
-        # Adjust for system load - reduce workers if system is under heavy load
-        if system_load > 0.7:
-            # System is under heavy load, reduce worker count
-            load_factor = max(0.5, 1 - (system_load - 0.7))  # 0.5-1.0 range
-            base_workers = max(1, int(base_workers * load_factor))
-            logger.info(f"System under load ({system_load:.2f}), adjusting workers to {base_workers}")
-        
-        # Adjust based on number of formats
+        # Calculate load factor with more granular scaling
+        if cpu_percent > 0.9 or memory_percent > 0.9:
+            # System under critical load - drastically reduce workers
+            load_factor = 0.4
+            logger.warning(f"System under critical load: CPU {cpu_percent:.2%}, Memory {memory_percent:.2%}")
+        elif cpu_percent > 0.8 or memory_percent > 0.8:
+            # System under heavy load - reduce workers significantly
+            load_factor = 0.6
+            logger.warning(f"System under heavy load: CPU {cpu_percent:.2%}, Memory {memory_percent:.2%}")
+        elif cpu_percent > 0.7 or memory_percent > 0.7:
+            # System under substantial load - reduce workers moderately
+            load_factor = 0.7
+            logger.info(f"System under substantial load: CPU {cpu_percent:.2%}, Memory {memory_percent:.2%}")
+        elif cpu_percent > 0.6 or memory_percent > 0.6:
+            # System under moderate load - slightly reduce workers
+            load_factor = 0.8
+            logger.info(f"System under moderate load: CPU {cpu_percent:.2%}, Memory {memory_percent:.2%}")
+        else:
+            # System under light load - use full capacity
+            load_factor = 1.0
+            logger.debug(f"System under light load: CPU {cpu_percent:.2%}, Memory {memory_percent:.2%}")
+            
+        # Adjust for number of formats with more sophisticated scaling
         format_count = len(formats)
+        if format_count >= 4:
+            # Many formats - need more parallelization but avoid overloading
+            format_factor = 1.1  # Slight boost for many formats
+        elif format_count == 3:
+            format_factor = 1.0  # Full capacity for 3 formats
+        elif format_count == 2:
+            format_factor = 0.9  # Slightly reduced for 2 formats
+        else:  # 1 format
+            format_factor = 0.8  # More reduced for single format
         
-        # Check for memory constraints (each worker might need ~500MB)
-        memory_based_workers = max(1, int(available_memory_gb / 0.5))
-        
-        # Adjust based on video characteristics if available
-        video_complexity_factor = 1.0
+        # Detect content type if video info is available
+        content_type = 'general'
         if video_info:
-            video_complexity_factor = self._calculate_video_complexity_factor(video_info)
-            logger.info(f"Video complexity factor: {video_complexity_factor:.2f}")
-        
-        # Apply video complexity factor to base workers
-        adjusted_workers = max(1, int(base_workers * video_complexity_factor))
-        
-        # If we have multiple formats, we need at least that many workers
-        # but still respect our upper limits based on profiling results and memory
-        if format_count > 1:
-            # Consider format complexity - WebM is more resource-intensive than MP4
-            webm_count = formats.count('webm')
-            mp4_count = formats.count('mp4')
-            mov_count = formats.count('mov')
+            content_type = self._detect_content_type(video_info)
             
-            # Calculate weighted format count (WebM counts as 1.5, MOV as 1.2, MP4 as 1.0)
-            weighted_format_count = (webm_count * 1.5) + (mov_count * 1.2) + (mp4_count * 1.0)
-            format_based_workers = max(1, int(weighted_format_count))
+        # Content type specific adjustments
+        content_type_factor = 1.0
+        if content_type == 'animation':
+            # Animation typically compresses well and benefits from more threads
+            content_type_factor = 1.2
+        elif content_type == 'gaming':
+            # Gaming content has high motion and benefits from more threads
+            content_type_factor = 1.1
+        elif content_type == 'screencast':
+            # Screencasts are often simpler and need fewer threads
+            content_type_factor = 0.9
+        elif content_type == 'film':
+            # Film content is complex but benefits from focused processing
+            content_type_factor = 1.0
             
-            # Consider all factors: CPU, memory, video complexity, and formats
-            return min(
-                max(format_based_workers, adjusted_workers),
-                memory_based_workers,
-                8  # Hard cap at 8 workers to prevent system overload
-            )
+        # Apply video complexity factor if available
+        complexity_factor = 1.0
+        if video_info:
+            complexity_factor = self._calculate_video_complexity_factor(video_info)
+            
+        # Format-specific adjustments
+        format_specific_factor = 1.0
+        if 'webm' in formats:
+            # WebM encoding is more CPU intensive
+            format_specific_factor *= 1.2
+        if 'gif' in formats:
+            # GIF encoding is less CPU intensive
+            format_specific_factor *= 0.9
+            
+        # Calculate adjusted worker count
+        adjusted_workers = max(1, int(base_workers * load_factor * format_factor * 
+                                     complexity_factor * content_type_factor * format_specific_factor))
         
-        # For single format, respect memory constraints and video complexity
-        return min(adjusted_workers, memory_based_workers)
+        # Ensure we don't exceed system memory constraints with more accurate estimation
+        available_memory_mb = memory.available / (1024 * 1024)  # Convert to MB
+        
+        # Estimate memory usage per worker based on video resolution and format
+        memory_per_worker_mb = 500  # Default estimate
+        if video_info and 'width' in video_info and 'height' in video_info:
+            width = video_info.get('width', 0)
+            height = video_info.get('height', 0)
+            resolution = width * height
+            
+            # Scale memory requirements based on resolution
+            if resolution > 3840 * 2160:  # 8K
+                memory_per_worker_mb = 1500
+            elif resolution > 1920 * 1080:  # 4K
+                memory_per_worker_mb = 1000
+            elif resolution > 1280 * 720:  # 1080p
+                memory_per_worker_mb = 750
+            else:  # 720p or lower
+                memory_per_worker_mb = 500
+                
+            # Adjust for formats
+            if 'webm' in formats:
+                memory_per_worker_mb *= 1.2  # WebM needs more memory
+                
+        # Calculate memory-based worker limit
+        memory_based_workers = max(1, int(available_memory_mb / memory_per_worker_mb))
+        
+        # Reserve some memory for the system (at least 1GB or 10% of total, whichever is greater)
+        total_memory_gb = memory.total / (1024 * 1024 * 1024)  # Convert to GB
+        min_reserve_gb = max(1, total_memory_gb * 0.1)  # At least 1GB or 10% of total
+        min_reserve_mb = min_reserve_gb * 1024
+        
+        # Adjust memory-based workers to account for reserved memory
+        safe_memory_mb = max(0, available_memory_mb - min_reserve_mb)
+        safe_memory_workers = max(1, int(safe_memory_mb / memory_per_worker_mb))
+        
+        # Final worker count is the minimum of adjusted workers and safe memory workers
+        final_workers = min(adjusted_workers, safe_memory_workers)
+        
+        # Log the calculation factors
+        logger.debug(
+            f"Worker calculation for {content_type} content: base={base_workers}, "
+            f"load_factor={load_factor:.2f}, format_factor={format_factor:.2f}, "
+            f"complexity_factor={complexity_factor:.2f}, content_type_factor={content_type_factor:.2f}, "
+            f"format_specific_factor={format_specific_factor:.2f}, "
+            f"memory_per_worker={memory_per_worker_mb}MB, memory_based={safe_memory_workers}, "
+            f"final={final_workers}"
+        )
+        
+        return final_workers
     
+    def _detect_content_type(self, video_info: Dict) -> str:
+        """
+        Detect the type of content in a video based on its characteristics.
+        
+        Args:
+            video_info: Dictionary containing video metadata
+            
+        Returns:
+            Content type: 'animation', 'gaming', 'screencast', 'film', or 'general'
+        """
+        # Default to 'general' if we can't determine content type
+        if not video_info:
+            return 'general'
+            
+        # Extract relevant metadata
+        codec = video_info.get('codec_name', '').lower()
+        width = video_info.get('width', 0)
+        height = video_info.get('height', 0)
+        fps_str = video_info.get('r_frame_rate', '')
+        bitrate = video_info.get('bit_rate', 0)
+        audio_codec = video_info.get('audio_codec_name', '').lower()
+        tags = video_info.get('tags', {})
+        
+        # Calculate frame rate
+        fps = 0
+        if fps_str and '/' in fps_str:
+            try:
+                num, den = map(int, fps_str.split('/'))
+                fps = num / den if den != 0 else 0
+            except (ValueError, ZeroDivisionError):
+                pass
+                
+        # Look for specific indicators in metadata
+        
+        # Animation indicators
+        animation_indicators = 0
+        
+        # Animations often have specific aspect ratios
+        if width and height:
+            aspect_ratio = width / height if height != 0 else 0
+            if abs(aspect_ratio - 16/9) < 0.1 or abs(aspect_ratio - 4/3) < 0.1:
+                animation_indicators += 1
+                
+        # Animations often have specific frame rates (24fps for traditional, 12-15fps for limited)
+        if 22 <= fps <= 26 or 12 <= fps <= 15:
+            animation_indicators += 1
+            
+        # Animations often have specific tags
+        title = tags.get('title', '').lower()
+        genre = tags.get('genre', '').lower()
+        if (any(term in title for term in ['anime', 'animation', 'cartoon', 'animated']) or 
+            any(term in genre for term in ['anime', 'animation', 'cartoon'])):
+            animation_indicators += 2
+            
+        # Gaming indicators
+        gaming_indicators = 0
+        
+        # Gaming videos often have specific resolutions
+        if ((width == 1920 and height == 1080) or 
+            (width == 2560 and height == 1440) or 
+            (width == 3840 and height == 2160)):
+            gaming_indicators += 1
+            
+        # Gaming videos often have high frame rates
+        if fps >= 60:
+            gaming_indicators += 2
+            
+        # Gaming videos often have specific tags
+        if (any(term in title for term in ['gameplay', 'gaming', 'playthrough', 'game']) or 
+            any(term in genre for term in ['game', 'gaming'])):
+            gaming_indicators += 2
+            
+        # Screencast indicators
+        screencast_indicators = 0
+        
+        # Screencasts often have specific frame rates (usually 30fps or lower)
+        if 0 < fps <= 30:
+            screencast_indicators += 1
+            
+        # Screencasts often have specific aspect ratios (typically 16:9 or 16:10)
+        if width and height:
+            aspect_ratio = width / height if height != 0 else 0
+            if abs(aspect_ratio - 16/9) < 0.1 or abs(aspect_ratio - 16/10) < 0.1:
+                screencast_indicators += 1
+                
+        # Screencasts often have specific tags
+        if (any(term in title for term in ['tutorial', 'screencast', 'screen recording', 'demo']) or 
+            any(term in genre for term in ['tutorial', 'educational', 'demonstration'])):
+            screencast_indicators += 2
+            
+        # Film indicators
+        film_indicators = 0
+        
+        # Films often have specific frame rates (typically 24fps)
+        if 23 <= fps <= 25:
+            film_indicators += 2
+            
+        # Films often have high bitrates
+        if bitrate > 8000000:  # > 8 Mbps
+            film_indicators += 1
+            
+        # Films often have specific audio codecs
+        if audio_codec in ['aac', 'ac3', 'eac3', 'dts']:
+            film_indicators += 1
+            
+        # Films often have specific tags
+        if (any(term in title for term in ['movie', 'film', 'cinema', 'trailer']) or 
+            any(term in genre for term in ['movie', 'film', 'drama', 'action', 'comedy', 'thriller'])):
+            film_indicators += 2
+            
+        # Determine content type based on indicators
+        scores = {
+            'animation': animation_indicators,
+            'gaming': gaming_indicators,
+            'screencast': screencast_indicators,
+            'film': film_indicators,
+            'general': 0  # Default score for general content
+        }
+        
+        # Get the content type with the highest score
+        content_type = max(scores.items(), key=lambda x: x[1])[0]
+        
+        # If the highest score is 0, default to 'general'
+        if scores[content_type] == 0:
+            content_type = 'general'
+            
+        logger.debug(f"Detected content type: {content_type} (scores: {scores})")
+        return content_type
+        
     def _calculate_video_complexity_factor(self, video_info: Dict) -> float:
         """
-        Calculate a complexity factor for a video based on its characteristics.
+        Calculate a complexity factor for a video based on its characteristics and content type.
         This factor is used to adjust thread allocation based on video complexity.
         
         Args:
@@ -1474,14 +1862,14 @@ class VideoConverter:
         if not video_info:
             return 1.0
             
-        complexity_factor = 1.0
-        
         # Resolution factor - higher resolution videos are more complex
         width = video_info.get('width', 0)
         height = video_info.get('height', 0)
         resolution = width * height if width and height else 0
         
-        if resolution > 1920 * 1080:  # 4K or higher
+        if resolution > 3840 * 2160:  # 8K
+            resolution_factor = 2.0
+        elif resolution > 1920 * 1080:  # 4K
             resolution_factor = 1.5
         elif resolution > 1280 * 720:  # 1080p
             resolution_factor = 1.2
@@ -1494,7 +1882,9 @@ class VideoConverter:
         bitrate = video_info.get('bit_rate', 0)
         if bitrate:
             bitrate_mbps = bitrate / 1000000  # Convert to Mbps
-            if bitrate_mbps > 20:  # Very high bitrate
+            if bitrate_mbps > 50:  # Ultra high bitrate
+                bitrate_factor = 1.5
+            elif bitrate_mbps > 20:  # Very high bitrate
                 bitrate_factor = 1.3
             elif bitrate_mbps > 10:  # High bitrate
                 bitrate_factor = 1.1
@@ -1508,7 +1898,9 @@ class VideoConverter:
         # Duration factor - longer videos may need more resources
         duration = video_info.get('duration', 0)
         if duration:
-            if duration > 1800:  # > 30 minutes
+            if duration > 3600:  # > 60 minutes
+                duration_factor = 1.3
+            elif duration > 1800:  # > 30 minutes
                 duration_factor = 1.2
             elif duration > 600:  # > 10 minutes
                 duration_factor = 1.1
@@ -1519,21 +1911,64 @@ class VideoConverter:
         else:
             duration_factor = 1.0
             
-        # Codec factor - some codecs are more complex to decode
+        # Codec factor - some codecs are more complex to decode/encode
         codec = video_info.get('codec_name', '').lower()
-        if codec in ['h265', 'hevc', 'vp9']:
-            codec_factor = 1.2  # Modern codecs may be more CPU intensive
+        if codec in ['h265', 'hevc', 'vp9', 'av1']:
+            codec_factor = 1.3  # Modern codecs are more CPU intensive
         elif codec in ['h264', 'avc']:
             codec_factor = 1.0  # Standard codec
+        elif codec in ['mpeg4', 'mpeg2video']:
+            codec_factor = 0.9  # Older codecs are simpler
         else:
             codec_factor = 1.1  # Other codecs
-            
+        
+        # Frame rate factor - higher frame rates need more processing power
+        fps = video_info.get('r_frame_rate', '')
+        if fps and '/' in fps:
+            try:
+                num, den = map(int, fps.split('/'))
+                frame_rate = num / den if den != 0 else 0
+                
+                if frame_rate > 60:
+                    fps_factor = 1.3  # High frame rate (60+ fps)
+                elif frame_rate > 30:
+                    fps_factor = 1.1  # Medium frame rate (30-60 fps)
+                else:
+                    fps_factor = 1.0  # Standard frame rate (<=30 fps)
+            except (ValueError, ZeroDivisionError):
+                fps_factor = 1.0
+        else:
+            fps_factor = 1.0
+        
+        # Content type factor - different content types have different complexity
+        content_type = self._detect_content_type(video_info)
+        if content_type == 'animation':
+            content_type_factor = 0.9  # Animation is usually simpler to encode
+        elif content_type == 'gaming':
+            content_type_factor = 1.2  # Gaming has high motion and detail
+        elif content_type == 'screencast':
+            content_type_factor = 0.8  # Screencasts have low motion
+        elif content_type == 'film':
+            content_type_factor = 1.1  # Film has grain and texture
+        else:  # 'general'
+            content_type_factor = 1.0
+        
         # Combine all factors with appropriate weights
         complexity_factor = (
-            resolution_factor * 0.4 +  # Resolution is most important
-            bitrate_factor * 0.3 +    # Bitrate is next
-            duration_factor * 0.2 +   # Duration has some impact
-            codec_factor * 0.1        # Codec has least impact
+            resolution_factor * 0.3 +    # Resolution is important
+            bitrate_factor * 0.2 +      # Bitrate is important
+            codec_factor * 0.15 +       # Codec affects complexity
+            fps_factor * 0.15 +         # Frame rate affects complexity
+            content_type_factor * 0.1 + # Content type affects complexity
+            duration_factor * 0.1       # Duration has some impact
+        )
+        
+        # Log the complexity calculation for debugging
+        logger.debug(
+            f"Video complexity calculation: resolution={resolution_factor:.2f}, "
+            f"bitrate={bitrate_factor:.2f}, codec={codec_factor:.2f}, "
+            f"fps={fps_factor:.2f}, content={content_type_factor:.2f}, "
+            f"duration={duration_factor:.2f}, final={complexity_factor:.2f}"
         )
         
         return complexity_factor
