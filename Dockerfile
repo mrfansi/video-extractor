@@ -20,8 +20,5 @@ COPY . .
 RUN mkdir -p /tmp/video-extractor && \
     chmod -R 777 /tmp/video-extractor
 
-# Expose port
-EXPOSE 8000
-
 # Run the application
 CMD ["python", "main.py"]
